@@ -1,7 +1,6 @@
 import OpenAI from 'openai';
 import { Episode, KBFile, Shot } from "../types";
 
-// 初始化 OpenRouter 客户端
 const openai = new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY,
   baseURL: import.meta.env.VITE_BASE_URL || "https://openrouter.ai/api/v1",
@@ -13,11 +12,11 @@ const SYSTEM_INSTRUCTIONS = `你是一位深谙短视频平台（红果、番茄
 排版必须严丝合缝地模仿用户提供的“排版参考文件”中的标点符号用法、角色名位置、换行频率等。`;
 
 export class GeminiService {
-  private ai: GoogleGenAI;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+
   }
+
 
   async analyzeNovel(novelContent: string) {
     const prompt = `[第一阶段：骨架分析与流派判定]
@@ -48,16 +47,16 @@ export class GeminiService {
 
 注意：输出纯文本，不要使用Markdown。`;
 
-    const response = await this.ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: prompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTIONS,
-        temperature: 0.8,
-      }
+    const response = await openai.chat.completions.create({
+      model: 'gemini-3-pro-preview', 
+      messages: [
+        { role: "system", content: SYSTEM_INSTRUCTIONS },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.8,
     });
 
-    return response.text;
+    return response.choices[0].message.content || "";
   }
 
   async generateOutline(novelContent: string, analysisReport: string) {
@@ -84,18 +83,18 @@ export class GeminiService {
 
 注意：直接输出内容，不要使用Markdown。`;
 
-    const response = await this.ai.models.generateContent({
+    const response = await openai.chat.completions.create({
       model: 'gemini-3-pro-preview',
-      contents: prompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTIONS,
-        temperature: 0.7,
-      }
+      messages: [
+        { role: "system", content: SYSTEM_INSTRUCTIONS },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.9,
     });
 
-    return response.text;
+    return response.choices[0].message.content || "";
   }
-
+}
   async generateScripts(outline: string, phase: number, novelContent: string, formattingRef?: string) {
     let formattingInstruction = "";
     if (formattingRef) {
