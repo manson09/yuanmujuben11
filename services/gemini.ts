@@ -376,7 +376,7 @@ Q版/反差感：穿插主角震惊的表情，吐槽“让我和诡异生孩子
 注意：直接输出内容，不要使用Markdown。`;
 
     const response = await openai.chat.completions.create({
-      model: 'google/gemini-3-pro-preview',
+      model: 'google/gemini-3.1-pro-preview',
       messages: [
         { role: "system", content: SYSTEM_INSTRUCTIONS },
         { role: "user", content: prompt }
