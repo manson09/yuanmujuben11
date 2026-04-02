@@ -46,7 +46,7 @@ export class GeminiService {
 注意：输出纯文本，不要使用Markdown。`;
 
     const response = await openai.chat.completions.create({
-      model: 'google/gemini-3-pro-preview', 
+      model: 'google/gemini-3.1-pro-preview', 
       messages: [
         { role: "system", content: SYSTEM_INSTRUCTIONS },
         { role: "user", content: prompt }
@@ -82,7 +82,7 @@ export class GeminiService {
 注意：直接输出内容，不要使用Markdown。`;
 
     const response = await openai.chat.completions.create({
-      model: 'google/gemini-3-pro-preview',
+      model: 'google/gemini-3.1-pro-preview',
       messages: [
         { role: "system", content: SYSTEM_INSTRUCTIONS },
         { role: "user", content: prompt }
