@@ -1,38 +1,8 @@
-# ====================== 【用户配置区，只需改这里】======================
-# OpenRouter API Key 申请地址：https://openrouter.ai/keys
-OPENAI_API_KEY = "你的OpenRouter_API_KEY"
-# OpenRouter 官方固定请求地址（如果使用 Cloudflare AI Gateway，请替换为你的网关地址）
-OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
-# 模型名：需要在 OpenRouter 上存在的模型，比如性价比高的 claude-3-haiku 或 gpt-4o-mini
-MODEL_NAME = "anthropic/claude-3-haiku" 
-# 调用失败最大重试次数
-MAX_RETRY = 3
-# ======================================================================
+import OpenAI from 'openai';
 
-import os
-import json
-import time
-import openai
-from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
+// ====================== 核心 Prompt 规则区（一字不删，完美保留） ======================
 
-# 配置校验，避免用户忘记填API_KEY直接报错
-if "你的OpenRouter" in OPENAI_API_KEY:
-    raise ValueError("⚠️ 请先去 OpenRouter 平台申请 API_KEY，填到配置区的 OPENAI_API_KEY 位置！")
-
-# 初始化大模型客户端
-client = openai.OpenAI(
-    api_key=OPENAI_API_KEY,
-    base_url=OPENAI_BASE_URL,
-    default_headers={
-        # OpenRouter 官方建议携带以下两个 Header，用于在其排行榜上识别你的应用（可选）
-        "HTTP-Referer": "https://your-cloudflare-worker-url.com", # 建议替换为你的 Cloudflare 部署域名
-        "X-Title": "Novel to Script Auto Generator",             
-    }
-)
-
-# ---------------------- 全局规则常量（可自行扩展）----------------------
-# 1. 全局最高优先级规则（短剧生成用，100%执行）
-GLOBAL_TOP_RULES = """
+const GLOBAL_TOP_RULES = `
 ## 🔝 全局最高优先级规则（所有流程必须严格遵守，优先级高于其他所有规则）
 ### 🎯 强制新增规则（必须100%执行）
 1. 【强制金手指规则】
@@ -64,10 +34,9 @@ GLOBAL_TOP_RULES = """
 - 辅助元素（比如金手指）仅可在约定的铺垫阶段出现，不能抢核心爽梗的风头
 ### 三、钩子优先级原则
 - 全剧终极钩子 > 10集阶段钩子 > 单集钩子，全剧终极钩子每10集至少强化1次，每集结尾必须留单集钩子，绝不允许断钩
-"""
+`;
 
-# 2. 8大类31小类爽点库（短剧生成用）
-SHUANGDIAN_LIBRARY = """
+const SHUANGDIAN_LIBRARY = `
 ## 📚 可选S级核心爽点库（必须从以下分类中选择，禁止自定义）
 1. 装逼打脸类：扮猪吃虎 / 实力碾压 / 解决难题 / 上帝视角 / 万千宠爱 / 一呼百应 / 幕后大佬 / 挥金如土 / 天赋异禀 / 不按常理
 2. 荣获至宝类：夺宝奇兵 / 慧眼识珠 / 神器认主 / 收服帮派
@@ -77,10 +46,9 @@ SHUANGDIAN_LIBRARY = """
 6. 拯救危难类：力挽狂澜 / 英雄救美
 7. 智商碾压类：预判对手 / 渔翁得利
 8. 绝地反杀类：绝境逃脱 / 极限反杀
-"""
+`;
 
-# 3. 子流派规则表（短剧生成用）
-SUB_GENRE_RULES = """
+const SUB_GENRE_RULES = `
 ## 🎭 子流派专属规则（对应流派必须严格遵守）
 | 子流派 | 专属钩子规则 | 专属爽梗规则 |
 |--------|--------------|--------------|
@@ -90,10 +58,9 @@ SUB_GENRE_RULES = """
 | 都市异能 | 全剧终极钩子必须绑定「异能暴露/拯救危机」，比如「有读心术的职员，能不能在公司破产前揪出内奸？」；每10集阶段钩子绑定「异能隐藏→解决危机」 | 异能仅可提前给观众透底1次，爽点突出信息差反差 |
 | 穿越历史 | 全剧终极钩子必须绑定「改变命运/夺嫡/救国」，比如「穿越成废太子的现代人，能不能在3个月后的废储大典上保住皇位？」；每10集阶段钩子绑定「朝堂危机→打脸政敌」 | 现代知识/历史记忆仅可提前给观众透底1次，爽点突出知识差 |
 | 校园爽文 | 全剧终极钩子必须绑定「逆袭考学/打脸校霸」，比如「常年倒数的学渣，能不能在高考时考上清北反杀所有人？」；每10集阶段钩子绑定「考试/比赛→打脸」 | 金手指（过目不忘/系统）仅可提前给观众透底1次，爽点突出学渣→学霸的反差 |
-"""
+`;
 
-# 4. 各爽点大类专属执行规则（短剧生成用）
-SHUANGDIAN_EXEC_RULES = """
+const SHUANGDIAN_EXEC_RULES = `
 ## ⚙️ 爽点专属执行规则（对应爽点类型必须严格遵守）
 ### 1. 装逼打脸类（核心：反差感）
 - 核心要求：所有内容围绕「别人看不起主角→主角用实力/身份打脸」走，爽感100%集中在主角反差高光
@@ -135,222 +102,127 @@ SHUANGDIAN_EXEC_RULES = """
 - 金手指边界：仅可在绝境铺垫阶段向观众透底1次主角有最后底牌，仅此1次；禁止金手指中途给buff/救场
 - 铺垫要求：先铺垫绝境的绝望感（刀架脖子/所有人觉得他死定了）→反杀瞬间快狠准→跟上对手难以置信的反应
 - 禁入内容：禁止中途插入第三方救场、得宝等内容
-"""
+`;
 
-# 5. 2024年热门网文流派分类（打标签/生成开篇用，可自行增删）
-CATEGORY_LIST = {
-    "男频热门": [
-        "诡异怪谈", "规则类怪谈", "克苏鲁",
-        "系统流", "签到系统", "盘点系统", "万界剧透",
-        "诸天无限流", "副本闯关", "快穿任务",
-        "都市新流派", "天师直播", "神豪", "鉴宝捡漏", "职场逆袭", "异能复苏",
-        "历史脑洞", "穿朝代搞建设", "历史聊天群", "男频科举",
-        "科幻废土", "深空航海", "赛博朋克", "星际殖民",
-        "玄幻新流派", "模拟器修仙", "修仙搞科研", "万相流"
-    ],
-    "女频热门": [
-        "穿书马甲文", "炮灰逆袭", "团宠万人迷", "反派洗白",
-        "年代文", "八零九零搞事业", "知青逆袭", "囤货流",
-        "古言权谋", "女扮男装科举", "宅斗", "宫斗", "嫡女逆袭",
-        "现言爽文", "重生复仇", "娱乐圈顶流", "双向暗恋", "甜宠虐渣",
-        "仙侠女强", "医妃毒妃", "仙途升级"
-    ],
-    "泛品类": [
-        "短剧情感", "反转小故事", "脑洞怪谈",
-        "末世囤货", "无限流小副本", "玄学科普",
-        "二次元同人", "综漫", "轻小说"
-    ]
-}
+// ====================== 前端服务调用区 ======================
 
-# ---------------------- 通用工具函数 ----------------------
-@retry(
-    stop=stop_after_attempt(MAX_RETRY),
-    wait=wait_random_exponential(multiplier=1, max=10),
-    retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError))
-)
-def call_llm(prompt: str, output_json: bool = True) -> dict | str:
-    """通用大模型调用函数，支持重试和格式校验"""
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.9,
-            response_format={"type": "json_object"} if output_json else None
-        )
-        content = response.choices[0].message.content.strip()
-        
-        if output_json:
-            return json.loads(content)
-        return content
-    except openai.AuthenticationError:
-        raise ValueError("⚠️ API_KEY 错误，请检查 OpenRouter 密钥是否正确！")
-    except openai.NotFoundError:
-        raise ValueError("⚠️ 模型未找到，请检查填写的 MODEL_NAME 在 OpenRouter 上是否存在或拼写正确！")
-    except Exception as e:
-        print(f"调用出错：{e}，重试中...")
-        time.sleep(2)
-        raise e
+export class GeminiService {
+  private client: OpenAI;
+  // 完美对应 OpenRouter 上的 Claude 3 Opus 模型
+  private modelName = "anthropic/claude-3-opus"; 
 
-# ---------------------- 功能1：网文自动打流派标签 ----------------------
-def get_novel_category(novel_content: str) -> str:
-    """给输入的网文片段自动匹配最新的流派标签"""
-    prompt = f"""
-    你是专业的网文分类编辑，参考以下最新的网文流派分类，给下面的网文内容打上最匹配的1-3个标签，只输出标签，用顿号分隔。
-   
-    可选分类：{str(CATEGORY_LIST)}
-    
-    网文内容：{novel_content[:1500]}
-    """
-    return call_llm(prompt, output_json=False)
+  constructor() {
+    this.client = new OpenAI({
+      // 优先读取 Cloudflare 环境变量，如果没有则使用备用字符串
+      apiKey: process.env.GEMINI_API_KEY || "你的OpenRouter_API_KEY", 
+      // OpenRouter 的官方接口地址
+      baseURL: "https://openrouter.ai/api/v1",
+      // 允许在前端浏览器环境中发起请求
+      dangerouslyAllowBrowser: true, 
+      defaultHeaders: {
+        "HTTP-Referer": typeof window !== 'undefined' ? window.location.href : "https://your-cloudflare-worker-url.com",
+        "X-Title": "Novel to Script Auto Generator",
+      }
+    });
+  }
 
-# ---------------------- 功能2：生成指定流派网文开篇 ----------------------
-def generate_novel_opening(category: str, word_count: int = 1000) -> str:
-    """根据指定流派生成对应风格的网文开篇"""
-    prompt = f"""
-    你是资深网文作者，写一篇{category}流派的网文开篇，要求有钩子、符合该流派的爽点，字数{word_count}字左右，不要写老套过时的内容。
-    """
-    return call_llm(prompt, output_json=False)
-
-# ---------------------- 功能3：网文转竖屏短剧全流程 ----------------------
-def analyze_novel(novel_content: str) -> dict:
-    """第一阶段：分析小说原文，提取结构化核心骨架，自动加金手指"""
-    prompt = f"""
-    {GLOBAL_TOP_RULES}
-    {SHUANGDIAN_LIBRARY}
-    {SUB_GENRE_RULES}
+  // 第一阶段：分析骨架
+  async analyzeNovel(novelContent: string): Promise<string> {
+    const prompt = `
+    ${GLOBAL_TOP_RULES}
+    ${SHUANGDIAN_LIBRARY}
+    ${SUB_GENRE_RULES}
     
     【任务】
     基于输入的小说内容提炼核心卖点，可自由魔改，爽感优先，必须给主角强加穿越/系统金手指二选一，输出标准化的小说核心骨架。
-    【输出要求（必须严格按照JSON格式输出，不要有多余内容）】
- 
-    {{
-        "base_info": {{
-            "book_name": "书名，可魔改得更有爽感",
-            "core_genre": "男频/女频",
-            "sub_genre": "从子流派规则表中选对应标签，最多3个",
-            "protagonist": "主角姓名+身份+核心性格+隐藏底牌，必须包含强制加的穿越/系统金手指",
-            "gold_finger": "强制加的金手指类型+能力+触发条件，明确使用边界（仅铺垫阶段出现1次）",
-            "final_boss": "最终BOSS姓名+身份+核心战力+和主角的核心仇恨，可魔改得更嚣张更坏",
-          
-            "final_goal": "主角最终要完成的终极目标，可魔改得更有爽感"
-        }},
-        "ultimate_hook": {{
-            "content": "全剧终极二元悬念，必须是明确的是非疑问，比如「被打入斩仙台的废仙，能不能在3日问斩前反杀所有众神？」，禁止模糊表述",
-            "strengthen_nodes": ["第10集强化内容", "第20集强化内容", "...每10集1个"]
-        }},
-        "shuangdian_tags": [
-            {{
-                "episode_range": "爽点对应的集数范围，比如1-5集",
-      
-                "core_shuangdian": "从爽点库中选1个S级核心爽点",
-                "forbidden_elements": ["该爽点的禁入元素，比如频繁系统提示、无关支线"],
-                "gold_finger_boundary": "金手指的使用边界，比如仅在第1集铺垫阶段出现1次"
-            }}
-        ],
-        "sub_genre_rules": "对应子流派的专属钩子+爽梗规则，从子流派规则表中提取"
-    }}
+    
+    【输出要求】
+    请以清晰的格式输出以下字段（必须包含所有必填项）：
+    1. 书名（可魔改得更有爽感）
+    2. 核心流派（男频/女频）
+    3. 子流派（从子流派规则表中选对应标签，最多3个）
+    4. 主角设定（姓名+身份+核心性格+隐藏底牌，必须包含强制加的穿越/系统金手指）
+    5. 金手指设定（强制加的金手指类型+能力+触发条件，明确使用边界：仅铺垫阶段出现1次）
+    6. 最终BOSS（姓名+身份+核心战力+和主角的核心仇恨，可魔改得更嚣张更坏）
+    7. 最终目标（主角最终要完成的终极目标，可魔改得更有爽感）
+    8. 全剧终极二元悬念（必须是明确的是非疑问，禁止模糊表述）
+    9. 钩子强化节点（如第10集强化内容等）
+    10. 爽点标签安排（集数范围、S级核心爽点、禁入元素、金手指使用边界）
+    11. 子流派专属规则
     
     【校验规则】
     1. 必须给主角强加穿越/系统金手指二选一，没有则直接重写
     2. 终极钩子必须符合要求，不能模糊
-    
     3. 核心爽点必须从给定的爽点库中选择，禁止自定义
-    4. 所有字段不能为空，缺项直接重写
     
     【输入的小说内容】：
-    {novel_content[:10000]}
-    """
-    return call_llm(prompt, output_json=True)
+    ${novelContent.substring(0, 10000)}
+    `;
+    
+    const response = await this.client.chat.completions.create({
+      model: this.modelName,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.9,
+    });
+    
+    return response.choices[0].message.content || "分析失败";
+  }
 
-def generate_outline(novel_skeleton: dict, unit_num: int = 1) -> dict:
-    """第二阶段：基于小说骨架生成分集大纲"""
-    unit_start = (unit_num - 1) * 10 + 1
-    unit_end = unit_num * 10
-    prompt = f"""
-    {GLOBAL_TOP_RULES}
-    {SHUANGDIAN_LIBRARY}
-    {SHUANGDIAN_EXEC_RULES}
-    子流派规则：{novel_skeleton['sub_genre_rules']}
+  // 第二阶段：魔改大纲
+  async generateOutline(novelContent: string, analysisReport: string): Promise<string> {
+    const prompt = `
+    ${GLOBAL_TOP_RULES}
+    ${SHUANGDIAN_LIBRARY}
+    ${SHUANGDIAN_EXEC_RULES}
     
-    【基础信息】
-    全剧终极钩子：{novel_skeleton['ultimate_hook']['content']}
-    本单元对应集数：{unit_start}-{unit_end}集
-  
-    本单元核心爽点：从以下爽点标签中匹配对应集数的爽点：{json.dumps(novel_skeleton['shuangdian_tags'], ensure_ascii=False)}
-    强制金手指：{novel_skeleton['base_info']['gold_finger']}
+    【前期骨架与流派判定报告】：
+    ${analysisReport}
     
+    【原著参考（可大幅魔改）】：
+    ${novelContent.substring(0, 3000)}
+
     【任务】
-    生成符合竖屏短剧要求的10集单元大纲，可自由魔改剧情、加冲突、加反派，爽感优先，无需拘泥原著细节。
-    【输出要求（必须严格按照JSON格式输出，不要有多余内容）】
-    {{
-        "unit_base_info": {{
-            "unit_num": {unit_num},
-            "episode_range": "{unit_start}-{unit_end}集",
-            "stage_goal": "本单元主角要完成的核心任务，可魔改得更有爽感",
-            "stage_hook": "本单元的核心阶段悬念，比如「主角能不能在家族大考上拿到第一？」",
-            
-            "core_shuangdian": "本单元的S级核心爽点，从爽点库中选1个",
-            "core_villain": "本单元核心反派的战力/智商/势力优势，必须足够强、足够坏，能和主角拉扯3回合以上，可魔改得更嚣张",
-            "bystanders": ["踩主角的人群", "同情主角的人群", "看热闹的人群"]
-        }},
-        "episode_outlines": [
-            {{
-                "episode_num": 1,
-                "core_plot": "30字以内概括本集核心剧情，可魔改加冲突",
-        
-                "single_hook": "本集结尾的单集悬念，必须停在冲突临界点",
-                "shuangdian_padding": "本集对应的爽点铺垫内容，没有则填无",
-                "ultimate_hook_strengthen": "本集是否强化全剧终极钩子，强化内容是什么，没有则填无"
-            }}
-            // 共10集，格式同上
-        ]
-    }}
+    生成符合竖屏短剧要求的1-10集单元大纲，可自由魔改剧情、加冲突、加反派，爽感优先，无需拘泥原著细节。
+    
+    【输出要求】
+    请清晰输出以下内容：
+    1. 单元基础信息（阶段目标、核心阶段悬念、本单元的S级核心爽点、核心反派设定、旁观者阵营）
+    2. 1-10集分集大纲（每集需包含：30字内核心剧情、单集结尾悬念、爽点铺垫内容、终极钩子强化内容）
     
     【校验规则】
     1. 必须有三层钩子：全剧终极钩子每10集至少强化1次，本单元有阶段钩子，每集有单集结尾钩子
     2. 核心爽点占比≥80%，辅助元素不越界，没有双核心爽点
-  
     3. 反派足够强、足够坏，有明确的旁观者阵营
-    4. 严格遵守对应子流派和爽点的专属规则，金手指不越界
-    """
-    return call_llm(prompt, output_json=True)
+    `;
+    
+    const response = await this.client.chat.completions.create({
+      model: this.modelName,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.9,
+    });
+    
+    return response.choices[0].message.content || "大纲生成失败";
+  }
 
-def generate_single_script(novel_skeleton: dict, episode_outline: dict, core_shuangdian: str) -> str:
-    """第三阶段：基于单集大纲生成最终的竖屏短剧脚本"""
-    # 自动匹配爽点大类规则
-    shuangdian_type = ""
-    if any(i in core_shuangdian for i in ["扮猪吃虎", "实力碾压", "幕后大佬", "挥金如土", "天赋异禀", "不按常理", "万千宠爱", "一呼百应", "解决难题", "上帝视角"]):
-        shuangdian_type = "装逼打脸类"
-    elif any(i in core_shuangdian for i in ["夺宝奇兵", "慧眼识珠", "神器认主", "收服帮派"]):
-        shuangdian_type = "荣获至宝类"
-    elif any(i in core_shuangdian for i in ["无心插柳", "一夜暴富", "偷听秘闻", "因祸得福"]):
-        shuangdian_type = "意外之喜类"
-    elif any(i in core_shuangdian for i in ["大仇得报", "诛杀坏人", "劫富济贫"]):
-        shuangdian_type = "惩戒恶人类"
-    elif any(i in core_shuangdian for i in ["持之以恒", "认祖归宗", "重情重义", "知恩图报"]):
-        shuangdian_type = "人格魅力类"
-    elif any(i in core_shuangdian for i in ["力挽狂澜", "英雄救美"]):
-        shuangdian_type = "拯救危难类"
-    elif any(i in core_shuangdian for i in ["预判对手", "渔翁得利"]):
-        shuangdian_type = "智商碾压类"
-    elif any(i in core_shuangdian for i in ["绝境逃脱", "极限反杀"]):
-        shuangdian_type = "绝地反杀类"
+  // 第三阶段：创作脚本
+  async generateScripts(outline: string, currentPhase: number, originalNovel: string, formattingRef: string): Promise<string> {
+    const prompt = `
+    ${GLOBAL_TOP_RULES}
+    ${SHUANGDIAN_EXEC_RULES}
     
-    prompt = f"""
-    {GLOBAL_TOP_RULES}
-    {SHUANGDIAN_EXEC_RULES}
-    本集核心爽点类型：{shuangdian_type}，核心爽点：{core_shuangdian}
-    对应子流派规则：{novel_skeleton['sub_genre_rules']}
-    全剧终极钩子：{novel_skeleton['ultimate_hook']['content']}
-    强制金手指：{novel_skeleton['base_info']['gold_finger']}
-    
+    【当前阶段大纲】：
+    ${outline}
+
     【任务】
-    基于单集大纲生成1-2分钟的竖屏短剧脚本，300-500字，节奏快、冲突强、爽感足，可自由加细节加台词，不需要拘泥原著。
-    【格式要求】
-    严格按照以下格式输出，不要有多余内容：
+    基于单集大纲生成第 ${currentPhase * 10 - 9}-${currentPhase * 10} 集的竖屏短剧脚本（每集生成300-500字）。要求节奏快、冲突强、爽感足，可自由加细节加台词，不需要拘泥原著。
+    
+    如果下方有【排版参考】，请务必 1:1 模仿其格式、标点习惯和分行逻辑：
+    【排版参考】：
+    ${formattingRef || "无"}
+
+    【默认格式要求（如果在无排版参考时使用）】
     ### 第X集
     【场景】：一句话说明场景，比如「斩仙台 日 外」
-   
     【画面】：分点描述画面，聚焦人物上半身/表情，每3秒一个小冲突点，适配竖屏
     【台词】：对应画面的人物台词，短句为主，无长句、无书面语，反派要够狂，主角要够稳
     【字幕/系统提示】：仅出现约定的1次铺垫用金手指提示/关键信息提示，仅观众可见，后续全程隐身
@@ -360,100 +232,14 @@ def generate_single_script(novel_skeleton: dict, episode_outline: dict, core_shu
     2. 核心爽梗占比≥80%，辅助元素不越界，金手指仅在约定阶段出现1次，没有抢戏
     3. 严格遵守对应爽点类型的专属规则
     4. 观众看完的第一感受是「爽」，注意力完全集中在核心爽梗上，没有被其他内容分散
+    `;
     
-    【单集大纲】：
-    {json.dumps(episode_outline, ensure_ascii=False)}
-    """
-    return call_llm(prompt, output_json=False)
-
-def generate_full_scripts(novel_content: str, generate_unit_num: int = 1) -> tuple[dict, dict, list]:
-    """全流程生成函数：输入小说内容，输出骨架、大纲、全10集脚本"""
-    print("🔄 第一步：正在分析小说骨架（自动加金手指）...")
-    skeleton = analyze_novel(novel_content)
-    print("✅ 小说骨架分析完成，强制金手指已添加：", skeleton['base_info']['gold_finger'])
+    const response = await this.client.chat.completions.create({
+      model: this.modelName,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.9,
+    });
     
-    print("🔄 第二步：正在生成单元大纲（爽感优先，可魔改）...")
-    outline = generate_outline(skeleton, unit_num=generate_unit_num)
-    print("✅ 单元大纲生成完成，本单元核心爽点：", outline['unit_base_info']['core_shuangdian'])
-    
-    print("🔄 第三步：正在生成单集脚本...")
-    scripts = []
-    core_shuangdian = outline['unit_base_info']['core_shuangdian']
-    for episode in outline['episode_outlines']:
-        print(f"正在生成第{episode['episode_num']}集脚本...")
-        script = generate_single_script(skeleton, episode, core_shuangdian)
-        scripts.append(script)
-        time.sleep(1)  # 避免接口限流
-    print("✅ 所有脚本生成完成")
-    
-    return skeleton, outline, scripts
-
-# ---------------------- 主程序交互入口 ----------------------
-if __name__ == "__main__":
-    while True:
-        print("\n" + "="*40)
-        print("📚 网文&短剧全能工具")
-        print("="*40)
-        print("1. 网文片段自动打流派标签")
-        print("2. 生成指定流派网文开篇")
-        print("3. 网文一键转10集竖屏短剧脚本")
-        print("4. 退出程序")
-        choice = input("\n请输入要使用的功能序号：")
-
-        if choice == "1":
-            content = input("请粘贴网文片段：")
-            if not content.strip():
-                print("⚠️ 内容不能为空")
-                continue
-            tags = get_novel_category(content)
-            print(f"\n✅ 匹配的流派标签：{tags}")
-
-        elif choice == "2":
-            category = input("请输入要生成的流派（比如：年代囤货文）：")
-            word_cnt = input("请输入要生成的字数（默认1000）：") or 1000
-            word_cnt = int(word_cnt)
-         
-            if not category.strip():
-                print("⚠️ 流派不能为空")
-                continue
-            opening = generate_novel_opening(category, word_cnt)
-            print(f"\n✅ 生成的开篇内容：\n{opening}")
-
-        elif choice == "3":
-            novel_content = input("请输入小说简介/片段（哪怕只有一句话也能生成）：")
-         
-            unit_num = input("请输入要生成的单元序号（默认第1单元=1-10集）：") or 1
-            unit_num = int(unit_num)
-            if not novel_content.strip():
-                print("⚠️ 小说内容不能为空")
-                continue
-            skeleton, outline, scripts = generate_full_scripts(novel_content, generate_unit_num=unit_num)
-            
-            # 输出预览
-            print("\n" + "="*50)
-            print("📖 自动魔改信息：")
-            print(f"书名：{skeleton['base_info']['book_name']}")
-            print(f"强制添加金手指：{skeleton['base_info']['gold_finger']}")
-            print(f"全剧终极钩子：{skeleton['ultimate_hook']['content']}")
-            print("\n📋 第1集脚本预览：")
-            print(scripts[0])
-  
-            # 保存到文件
-            save_name = f"{skeleton['base_info']['book_name']}_第{unit_num}单元脚本.md"
-            with open(save_name, "w", encoding="utf-8") as f:
-                f.write(f"# {skeleton['base_info']['book_name']} 第{unit_num}单元（{unit_num*10-9}-{unit_num*10}集）短剧脚本\n")
-                f.write(f"## 核心设定：\n")
-           
-                f.write(f"- 金手指：{skeleton['base_info']['gold_finger']}\n")
-                f.write(f"- 终极钩子：{skeleton['ultimate_hook']['content']}\n")
-                f.write(f"- 本单元核心爽点：{outline['unit_base_info']['core_shuangdian']}\n\n")
-                for script in scripts:
-                    f.write(script + "\n\n")
-            print(f"\n📦 所有脚本已保存到「{save_name}」，可直接使用")
-
-        elif choice == "4":
-            print("👋 退出成功")
-            break
-
-        else:
-            print("⚠️ 输入错误，请输入1-4的序号")
+    return response.choices[0].message.content || "脚本生成失败";
+  }
+}
