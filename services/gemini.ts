@@ -171,7 +171,7 @@ async function callLLM(prompt: string, outputJson: boolean = true, retries: numb
         throw error;
       }
       // 指数退避等待
-      await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 10000)));
+      await new Promise(resolve => setTimeout(resolve, Math.min(2000 * Math.pow(2, attempt), 30000)));
     }
   }
 }
