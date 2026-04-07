@@ -118,8 +118,8 @@ async function callLLM(prompt: string, outputJson: boolean = true, retries: numb
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${API_KEY}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': '爆款漫剧金牌编剧智能体',
+         'HTTP-Referer': window.location.origin,
+'X-Title': 'Novel-to-Script-Generator',
         },
         body: JSON.stringify({
           model: MODEL_NAME,
