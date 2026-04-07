@@ -124,7 +124,8 @@ async function callLLM(prompt: string, outputJson: boolean = true, retries: numb
         body: JSON.stringify({
           model: MODEL_NAME,
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.9,
+   temperature: 0.9,
+          max_tokens: 8000,
           ...(outputJson ? { response_format: { type: 'json_object' } } : {}),
         }),
       });
