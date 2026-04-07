@@ -1,6 +1,6 @@
 // ====================== 【配置区】======================
 // API Key 从 Cloudflare 环境变量注入（在 vite.config.ts 中配置）
-const API_KEY: string = (typeof process !== 'undefined' && process.env?.API_KEY) || '';
+const API_KEY: string = (import.meta as any).env?.VITE_OPENAI_API_KEY || '';
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const MODEL_NAME = "anthropic/claude-sonnet-4.6";
 const MAX_RETRY = 3;
