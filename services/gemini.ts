@@ -114,7 +114,7 @@ export class GeminiService {
   constructor() {
     this.client = new OpenAI({
       // 优先读取 Cloudflare 环境变量，如果没有则使用备用字符串
-      apiKey: import.meta.env.VITE_GEMINI_API_KEY || "", 
+      apiKey: import.meta.VITE_OPENAI_API_KEY || "", 
       // OpenRouter 的官方接口地址
       baseURL: "https://openrouter.ai/api/v1",
       // 允许在前端浏览器环境中发起请求
