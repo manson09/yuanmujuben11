@@ -396,15 +396,10 @@ export class GeminiService {
       4. 观众看完的第一感受是「爽」，注意力完全集中在核心爽梗上，没有被其他内容分散
       
       【单集大纲】：
-      ${JSON.stringify(episode)}
-      `;
+  ${JSON.stringify(outline.episode_outlines)}
+    `;
 
-      const script = await callLLM(prompt, false);
-      allScripts.push(script);
-      // 避免限流
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    }
-
-    return allScripts.join('\n\n---\n\n');
+    const result = await callLLM(prompt, false);
+    return result;
   }
 }
