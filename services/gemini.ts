@@ -148,7 +148,16 @@ async function callLLM(prompt: string, outputJson: boolean = true, retries: numb
       }
 
       if (outputJson) {
-        return JSON.parse(content);
+        let jsonStr = content;
+        // 去除可能的 markdown 代码块包裹
+        jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+        jsonStr = jsonStr.trim();
+        try {
+          return JSON.parse(jsonStr);
+        } catch (e) {
+          console.error('JSON 解析失败，原始内容：', content);
+          throw new Error('模型返回的内容不是有效的 JSON 格式');
+        }
       }
       return content;
     } catch (error: any) {
