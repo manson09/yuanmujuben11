@@ -109,7 +109,7 @@ const SHUANGDIAN_EXEC_RULES = `
 export class GeminiService {
   private client: OpenAI;
   // 完美对应 OpenRouter 上的 Claude 3 Opus 模型
-  private modelName = "anthropic/claude-opus-4.6"; 
+  private modelName = "google/gemini-3.1-pro-preview"; 
 
   constructor() {
     this.client = new OpenAI({
