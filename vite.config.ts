@@ -11,8 +11,8 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        // 支持多种环境变量名，Cloudflare 上设哪个都行
+        'process.env.API_KEY': JSON.stringify(env.OPENROUTER_API_KEY || env.GEMINI_API_KEY || env.API_KEY || ''),
       },
       resolve: {
         alias: {
