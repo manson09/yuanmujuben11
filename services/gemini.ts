@@ -1,7 +1,12 @@
-import OpenAI from 'openai';
+// ====================== 【配置区】======================
+// API Key 从 Cloudflare 环境变量注入（在 vite.config.ts 中配置）
+const API_KEY: string = (typeof process !== 'undefined' && process.env?.API_KEY) || '';
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const MODEL_NAME = "anthropic/claude-sonnet-4.6";
+const MAX_RETRY = 3;
+// ======================================================================
 
-// ====================== 核心 Prompt 规则区（一字不删，完美保留） ======================
-
+// ---------------------- 全局规则常量 ----------------------
 const GLOBAL_TOP_RULES = `
 ## 🔝 全局最高优先级规则（所有流程必须严格遵守，优先级高于其他所有规则）
 ### 🎯 强制新增规则（必须100%执行）
@@ -104,28 +109,88 @@ const SHUANGDIAN_EXEC_RULES = `
 - 禁入内容：禁止中途插入第三方救场、得宝等内容
 `;
 
-// ====================== 前端服务调用区 ======================
+// ---------------------- 通用 LLM 调用函数 ----------------------
+async function callLLM(prompt: string, outputJson: boolean = true, retries: number = MAX_RETRY): Promise<any> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`,
+          'HTTP-Referer': window.location.origin,
+          'X-Title': '爆款漫剧金牌编剧智能体',
+        },
+        body: JSON.stringify({
+          model: MODEL_NAME,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.9,
+          ...(outputJson ? { response_format: { type: 'json_object' } } : {}),
+        }),
+      });
 
-export class GeminiService {
-  private client: OpenAI;
-  // 完美对应 OpenRouter 上的 Claude 3 Opus 模型
-  private modelName = "anthropic/claude-sonnet-4.6"; 
-
-  constructor() {
-    this.client = new OpenAI({
-      // 优先读取 Cloudflare 环境变量，如果没有则使用备用字符串
-apiKey: import.meta.env.VITE_OPENAI_API_KEY || "", 
-baseURL: import.meta.env.VITE_BASE_URL || "https://openrouter.ai/api/v1",
-      // 允许在前端浏览器环境中发起请求
-      dangerouslyAllowBrowser: true, 
-      defaultHeaders: {
-        "HTTP-Referer": typeof window !== 'undefined' ? window.location.href : "https://your-cloudflare-worker-url.com",
-        "X-Title": "Novel to Script Auto Generator",
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          throw new Error('⚠️ API_KEY 错误，请检查 Cloudflare 环境变量中的 OpenRouter 密钥是否正确！');
+        }
+        if (response.status === 404) {
+          throw new Error('⚠️ 模型未找到，请检查 MODEL_NAME 在 OpenRouter 上是否存在！');
+        }
+        throw new Error(`API 请求失败 (${response.status}): ${JSON.stringify(errData)}`);
       }
-    });
-  }
 
-  // 第一阶段：分析骨架
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content?.trim();
+
+      if (!content) {
+        throw new Error('API 返回内容为空');
+      }
+
+      if (outputJson) {
+        return JSON.parse(content);
+      }
+      return content;
+    } catch (error: any) {
+      // 不可重试的错误直接抛出
+      if (error.message?.includes('API_KEY') || error.message?.includes('模型未找到')) {
+        throw error;
+      }
+      console.warn(`调用出错（第${attempt + 1}次）：${error.message}，重试中...`);
+      if (attempt === retries - 1) {
+        throw error;
+      }
+      // 指数退避等待
+      await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 10000)));
+    }
+  }
+}
+
+// ---------------------- 爽点类型匹配工具 ----------------------
+function matchShuangdianType(coreShuangdian: string): string {
+  const typeMap: Record<string, string[]> = {
+    '装逼打脸类': ['扮猪吃虎', '实力碾压', '幕后大佬', '挥金如土', '天赋异禀', '不按常理', '万千宠爱', '一呼百应', '解决难题', '上帝视角'],
+    '荣获至宝类': ['夺宝奇兵', '慧眼识珠', '神器认主', '收服帮派'],
+    '意外之喜类': ['无心插柳', '一夜暴富', '偷听秘闻', '因祸得福'],
+    '惩戒恶人类': ['大仇得报', '诛杀坏人', '劫富济贫'],
+    '人格魅力类': ['持之以恒', '认祖归宗', '重情重义', '知恩图报'],
+    '拯救危难类': ['力挽狂澜', '英雄救美'],
+    '智商碾压类': ['预判对手', '渔翁得利'],
+    '绝地反杀类': ['绝境逃脱', '极限反杀'],
+  };
+
+  for (const [type, keywords] of Object.entries(typeMap)) {
+    if (keywords.some(kw => coreShuangdian.includes(kw))) {
+      return type;
+    }
+  }
+  return '';
+}
+
+// ---------------------- GeminiService 类（供 App.tsx 调用）----------------------
+export class GeminiService {
+
+  // 第一阶段：分析小说骨架
   async analyzeNovel(novelContent: string): Promise<string> {
     const prompt = `
     ${GLOBAL_TOP_RULES}
@@ -134,111 +199,203 @@ baseURL: import.meta.env.VITE_BASE_URL || "https://openrouter.ai/api/v1",
     
     【任务】
     基于输入的小说内容提炼核心卖点，可自由魔改，爽感优先，必须给主角强加穿越/系统金手指二选一，输出标准化的小说核心骨架。
-    
-    【输出要求】
-    请以清晰的格式输出以下字段（必须包含所有必填项）：
-    1. 书名（可魔改得更有爽感）
-    2. 核心流派（男频/女频）
-    3. 子流派（从子流派规则表中选对应标签，最多3个）
-    4. 主角设定（姓名+身份+核心性格+隐藏底牌，必须包含强制加的穿越/系统金手指）
-    5. 金手指设定（强制加的金手指类型+能力+触发条件，明确使用边界：仅铺垫阶段出现1次）
-    6. 最终BOSS（姓名+身份+核心战力+和主角的核心仇恨，可魔改得更嚣张更坏）
-    7. 最终目标（主角最终要完成的终极目标，可魔改得更有爽感）
-    8. 全剧终极二元悬念（必须是明确的是非疑问，禁止模糊表述）
-    9. 钩子强化节点（如第10集强化内容等）
-    10. 爽点标签安排（集数范围、S级核心爽点、禁入元素、金手指使用边界）
-    11. 子流派专属规则
+    【输出要求（必须严格按照JSON格式输出，不要有多余内容）】
+    {
+        "base_info": {
+            "book_name": "书名，可魔改得更有爽感",
+            "core_genre": "男频/女频",
+            "sub_genre": "从子流派规则表中选对应标签，最多3个",
+            "protagonist": "主角姓名+身份+核心性格+隐藏底牌，必须包含强制加的穿越/系统金手指",
+            "gold_finger": "强制加的金手指类型+能力+触发条件，明确使用边界（仅铺垫阶段出现1次）",
+            "final_boss": "最终BOSS姓名+身份+核心战力+和主角的核心仇恨，可魔改得更嚣张更坏",
+            "final_goal": "主角最终要完成的终极目标，可魔改得更有爽感"
+        },
+        "ultimate_hook": {
+            "content": "全剧终极二元悬念，必须是明确的是非疑问，比如「被打入斩仙台的废仙，能不能在3日问斩前反杀所有众神？」，禁止模糊表述",
+            "strengthen_nodes": ["第10集强化内容", "第20集强化内容", "...每10集1个"]
+        },
+        "shuangdian_tags": [
+            {
+                "episode_range": "爽点对应的集数范围，比如1-5集",
+                "core_shuangdian": "从爽点库中选1个S级核心爽点",
+                "forbidden_elements": ["该爽点的禁入元素，比如频繁系统提示、无关支线"],
+                "gold_finger_boundary": "金手指的使用边界，比如仅在第1集铺垫阶段出现1次"
+            }
+        ],
+        "sub_genre_rules": "对应子流派的专属钩子+爽梗规则，从子流派规则表中提取"
+    }
     
     【校验规则】
     1. 必须给主角强加穿越/系统金手指二选一，没有则直接重写
     2. 终极钩子必须符合要求，不能模糊
     3. 核心爽点必须从给定的爽点库中选择，禁止自定义
+    4. 所有字段不能为空，缺项直接重写
     
     【输入的小说内容】：
-    ${novelContent.substring(0, 10000)}
+    ${novelContent.slice(0, 10000)}
     `;
-    
-    const response = await this.client.chat.completions.create({
-      model: this.modelName,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.9,
-    });
-    
-    return response.choices[0].message.content || "分析失败";
+
+    const result = await callLLM(prompt, true);
+    return this.formatAnalysisReport(result);
   }
 
-  // 第二阶段：魔改大纲
+  // 格式化分析报告为可读文本
+  private formatAnalysisReport(skeleton: any): string {
+    const info = skeleton.base_info;
+    const hook = skeleton.ultimate_hook;
+    let report = `📖 书名：${info.book_name}\n`;
+    report += `📂 流派：${info.core_genre} / ${info.sub_genre}\n`;
+    report += `👤 主角：${info.protagonist}\n`;
+    report += `🔧 金手指：${info.gold_finger}\n`;
+    report += `👿 终极BOSS：${info.final_boss}\n`;
+    report += `🎯 终极目标：${info.final_goal}\n\n`;
+    report += `🪝 全剧终极钩子：${hook.content}\n`;
+    report += `📍 钩子强化节点：${hook.strengthen_nodes.join('、')}\n\n`;
+    report += `⚡ 爽点规划：\n`;
+    skeleton.shuangdian_tags.forEach((tag: any) => {
+      report += `  - ${tag.episode_range}：${tag.core_shuangdian}（金手指边界：${tag.gold_finger_boundary}）\n`;
+    });
+    report += `\n🎭 子流派规则：${skeleton.sub_genre_rules}\n`;
+
+    // 把原始 JSON 存在末尾，供后续阶段使用
+    report += `\n\n<!--SKELETON_JSON_START-->${JSON.stringify(skeleton)}<!--SKELETON_JSON_END-->`;
+    return report;
+  }
+
+  // 从分析报告中提取骨架 JSON
+  private extractSkeleton(analysisReport: string): any {
+    const match = analysisReport.match(/<!--SKELETON_JSON_START-->(.+?)<!--SKELETON_JSON_END-->/);
+    if (match) {
+      return JSON.parse(match[1]);
+    }
+    throw new Error('无法从分析报告中提取骨架数据，请重新运行分析');
+  }
+
+  // 第二阶段：生成分集大纲
   async generateOutline(novelContent: string, analysisReport: string): Promise<string> {
+    const skeleton = this.extractSkeleton(analysisReport);
+    const unitNum = 1;
+    const unitStart = (unitNum - 1) * 10 + 1;
+    const unitEnd = unitNum * 10;
+
     const prompt = `
     ${GLOBAL_TOP_RULES}
     ${SHUANGDIAN_LIBRARY}
     ${SHUANGDIAN_EXEC_RULES}
+    子流派规则：${skeleton.sub_genre_rules}
     
-    【前期骨架与流派判定报告】：
-    ${analysisReport}
+    【基础信息】
+    全剧终极钩子：${skeleton.ultimate_hook.content}
+    本单元对应集数：${unitStart}-${unitEnd}集
+    本单元核心爽点：从以下爽点标签中匹配对应集数的爽点：${JSON.stringify(skeleton.shuangdian_tags)}
+    强制金手指：${skeleton.base_info.gold_finger}
     
-    【原著参考（可大幅魔改）】：
-    ${novelContent.substring(0, 3000)}
-
     【任务】
-    生成符合竖屏短剧要求的1-10集单元大纲，可自由魔改剧情、加冲突、加反派，爽感优先，无需拘泥原著细节。
-    
-    【输出要求】
-    请清晰输出以下内容：
-    1. 单元基础信息（阶段目标、核心阶段悬念、本单元的S级核心爽点、核心反派设定、旁观者阵营）
-    2. 1-10集分集大纲（每集需包含：30字内核心剧情、单集结尾悬念、爽点铺垫内容、终极钩子强化内容）
+    生成符合竖屏短剧要求的10集单元大纲，可自由魔改剧情、加冲突、加反派，爽感优先，无需拘泥原著细节。
+    【输出要求（必须严格按照JSON格式输出，不要有多余内容）】
+    {
+        "unit_base_info": {
+            "unit_num": ${unitNum},
+            "episode_range": "${unitStart}-${unitEnd}集",
+            "stage_goal": "本单元主角要完成的核心任务，可魔改得更有爽感",
+            "stage_hook": "本单元的核心阶段悬念",
+            "core_shuangdian": "本单元的S级核心爽点，从爽点库中选1个",
+            "core_villain": "本单元核心反派的战力/智商/势力优势",
+            "bystanders": ["踩主角的人群", "同情主角的人群", "看热闹的人群"]
+        },
+        "episode_outlines": [
+            {
+                "episode_num": 1,
+                "core_plot": "30字以内概括本集核心剧情",
+                "single_hook": "本集结尾的单集悬念",
+                "shuangdian_padding": "本集对应的爽点铺垫内容，没有则填无",
+                "ultimate_hook_strengthen": "本集是否强化全剧终极钩子，没有则填无"
+            }
+        ]
+    }
     
     【校验规则】
     1. 必须有三层钩子：全剧终极钩子每10集至少强化1次，本单元有阶段钩子，每集有单集结尾钩子
     2. 核心爽点占比≥80%，辅助元素不越界，没有双核心爽点
     3. 反派足够强、足够坏，有明确的旁观者阵营
+    4. 严格遵守对应子流派和爽点的专属规则，金手指不越界
     `;
-    
-    const response = await this.client.chat.completions.create({
-      model: this.modelName,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.9,
-    });
-    
-    return response.choices[0].message.content || "大纲生成失败";
+
+    const outlineData = await callLLM(prompt, true);
+    let text = this.formatOutline(outlineData);
+    text += `\n\n<!--OUTLINE_JSON_START-->${JSON.stringify({ outline: outlineData, skeleton })}<!--OUTLINE_JSON_END-->`;
+    return text;
   }
 
-  // 第三阶段：创作脚本
-  async generateScripts(outline: string, currentPhase: number, originalNovel: string, formattingRef: string): Promise<string> {
-    const prompt = `
-    ${GLOBAL_TOP_RULES}
-    ${SHUANGDIAN_EXEC_RULES}
-    
-    【当前阶段大纲】：
-    ${outline}
+  private formatOutline(outline: any): string {
+    const info = outline.unit_base_info;
+    let text = `📋 单元大纲：${info.episode_range}\n`;
+    text += `🎯 核心任务：${info.stage_goal}\n`;
+    text += `🪝 阶段悬念：${info.stage_hook}\n`;
+    text += `⚡ 核心爽点：${info.core_shuangdian}\n`;
+    text += `👿 核心反派：${info.core_villain}\n`;
+    text += `👥 旁观者：${info.bystanders.join(' / ')}\n\n`;
+    text += `--- 分集大纲 ---\n\n`;
 
-    【任务】
-    基于单集大纲生成第 ${currentPhase * 10 - 9}-${currentPhase * 10} 集的竖屏短剧脚本（每集生成300-500字）。要求节奏快、冲突强、爽感足，可自由加细节加台词，不需要拘泥原著。
-    
-    如果下方有【排版参考】，请务必 1:1 模仿其格式、标点习惯和分行逻辑：
-    【排版参考】：
-    ${formattingRef || "无"}
-
-    【默认格式要求（如果在无排版参考时使用）】
-    ### 第X集
-    【场景】：一句话说明场景，比如「斩仙台 日 外」
-    【画面】：分点描述画面，聚焦人物上半身/表情，每3秒一个小冲突点，适配竖屏
-    【台词】：对应画面的人物台词，短句为主，无长句、无书面语，反派要够狂，主角要够稳
-    【字幕/系统提示】：仅出现约定的1次铺垫用金手指提示/关键信息提示，仅观众可见，后续全程隐身
-    
-    【校验规则】
-    1. 符合钩子要求：每集结尾留悬念，按时强化全剧终极钩子
-    2. 核心爽梗占比≥80%，辅助元素不越界，金手指仅在约定阶段出现1次，没有抢戏
-    3. 严格遵守对应爽点类型的专属规则
-    4. 观众看完的第一感受是「爽」，注意力完全集中在核心爽梗上，没有被其他内容分散
-    `;
-    
-    const response = await this.client.chat.completions.create({
-      model: this.modelName,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.9,
+    outline.episode_outlines.forEach((ep: any) => {
+      text += `【第${ep.episode_num}集】${ep.core_plot}\n`;
+      text += `  钩子：${ep.single_hook}\n`;
+      text += `  爽点铺垫：${ep.shuangdian_padding}\n`;
+      text += `  终极钩子强化：${ep.ultimate_hook_strengthen}\n\n`;
     });
-    
-    return response.choices[0].message.content || "脚本生成失败";
+
+    return text;
+  }
+
+  // 第三阶段：生成全部脚本
+  async generateScripts(outlineText: string, phase: number, novelContent: string, formattingRef?: string): Promise<string> {
+    const match = outlineText.match(/<!--OUTLINE_JSON_START-->(.+?)<!--OUTLINE_JSON_END-->/);
+    if (!match) {
+      throw new Error('无法从大纲中提取数据，请重新生成大纲');
+    }
+
+    const { outline, skeleton } = JSON.parse(match[1]);
+    const coreShuangdian = outline.unit_base_info.core_shuangdian;
+    const shuangdianType = matchShuangdianType(coreShuangdian);
+
+    const allScripts: string[] = [];
+
+    for (const episode of outline.episode_outlines) {
+      const prompt = `
+      ${GLOBAL_TOP_RULES}
+      ${SHUANGDIAN_EXEC_RULES}
+      本集核心爽点类型：${shuangdianType}，核心爽点：${coreShuangdian}
+      对应子流派规则：${skeleton.sub_genre_rules}
+      全剧终极钩子：${skeleton.ultimate_hook.content}
+      强制金手指：${skeleton.base_info.gold_finger}
+      ${formattingRef ? `\n【排版参考】请严格模仿以下排版风格：\n${formattingRef.slice(0, 2000)}` : ''}
+      
+      【任务】
+      基于单集大纲生成1-2分钟的竖屏短剧脚本，300-500字，节奏快、冲突强、爽感足，可自由加细节加台词，不需要拘泥原著。
+      【格式要求】
+      严格按照以下格式输出，不要有多余内容：
+      ### 第${episode.episode_num}集
+      【场景】：一句话说明场景，比如「斩仙台 日 外」
+      【画面】：分点描述画面，聚焦人物上半身/表情，每3秒一个小冲突点，适配竖屏
+      【台词】：对应画面的人物台词，短句为主，无长句、无书面语，反派要够狂，主角要够稳
+      【字幕/系统提示】：仅出现约定的1次铺垫用金手指提示/关键信息提示，仅观众可见，后续全程隐身
+      
+      【校验规则】
+      1. 符合钩子要求：每集结尾留悬念，按时强化全剧终极钩子
+      2. 核心爽梗占比≥80%，辅助元素不越界，金手指仅在约定阶段出现1次，没有抢戏
+      3. 严格遵守对应爽点类型的专属规则
+      4. 观众看完的第一感受是「爽」，注意力完全集中在核心爽梗上，没有被其他内容分散
+      
+      【单集大纲】：
+      ${JSON.stringify(episode)}
+      `;
+
+      const script = await callLLM(prompt, false);
+      allScripts.push(script);
+      // 避免限流
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    return allScripts.join('\n\n---\n\n');
   }
 }
