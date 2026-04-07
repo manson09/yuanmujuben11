@@ -372,7 +372,6 @@ export class GeminiService {
 
     for (const episode of outline.episode_outlines) {
       const prompt = `
-      ${GLOBAL_TOP_RULES}
       ${SHUANGDIAN_EXEC_RULES}
       本集核心爽点类型：${shuangdianType}，核心爽点：${coreShuangdian}
       对应子流派规则：${skeleton.sub_genre_rules}
@@ -403,7 +402,7 @@ export class GeminiService {
       const script = await callLLM(prompt, false);
       allScripts.push(script);
       // 避免限流
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     return allScripts.join('\n\n---\n\n');
