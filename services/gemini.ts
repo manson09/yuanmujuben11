@@ -401,5 +401,6 @@ export class GeminiService {
 
     const result = await callLLM(prompt, false);
     return result;
+       }
   }
 }
