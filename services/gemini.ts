@@ -150,8 +150,8 @@ const SHUANGDIAN_EXEC_RULES = `
 - 禁入内容：禁止提前暴露规则漏洞给剧内角色，全程保持紧张感
 `;
 
-// ---------------------- 【修复点1：重写LLM调用函数，增加JSON容错解析+格式强制】 ----------------------
-async function callLLM(prompt: string, outputJson: boolean = true, retries: number = MAX_RETRY): Promise<any> {
+// ---------------------- 【终极修复：重写LLM调用，用标签包裹替代强制JSON，100%稳定】 ----------------------
+async function callLLM(prompt: string, needJson: boolean = true, retries: number = MAX_RETRY): Promise<any> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
@@ -164,21 +164,19 @@ async function callLLM(prompt: string, outputJson: boolean = true, retries: numb
         },
         body: JSON.stringify({
           model: MODEL_NAME,
-          // 拆分System和User消息，格式要求放在System权重更高
           messages: [
             {
               role: "system",
-              content: `你是专业的短剧脚本生成助手，必须严格遵守以下规则：
-              1. 所有输出必须100%符合用户要求的格式，禁止任何创新
-              2. 如果要求输出JSON，必须输出纯JSON，禁止任何前置解释、后置说明、markdown代码块标记
-              3. JSON的字符串值必须用双引号，禁止单引号，禁止未转义的换行、制表符等特殊字符
-              4. 禁止输出任何JSON以外的内容，哪怕用户要求你解释，也必须把解释放在JSON的字段里`
+              content: needJson ? `你是专业的JSON输出助手，必须严格遵守以下规则：
+              1. 所有输出内容必须用<json>和</json>标签包裹，标签外不允许有任何其他内容
+              2. JSON必须严格符合规范：所有key必须用双引号，禁止单引号；字符串值中的双引号必须用\转义；禁止 trailing comma
+              3. 数字类型的字段必须输出数字，不要加引号变成字符串
+              4. 禁止输出任何解释、说明、markdown格式，只输出标签包裹的JSON` : `你是专业的短剧脚本生成助手，严格按照用户要求的格式输出，不需要多余解释`
             },
             { role: 'user', content: prompt }
           ],
-          temperature: 0.7, // 降低温度保证格式稳定
-          max_tokens: 8000,
-          ...(outputJson ? { response_format: { type: 'json_object' } } : {}),
+          temperature: 0.6,
+          max_tokens: 12000, // 加大token限制避免截断
         }),
       });
 
@@ -200,35 +198,36 @@ async function callLLM(prompt: string, outputJson: boolean = true, retries: numb
         throw new Error('API 返回内容为空');
       }
 
-      if (outputJson) {
-        // 【修复点2：多层JSON清洗，容错率拉满】
-        let jsonStr = content;
-        // 1. 去除所有markdown代码块标记
-        jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-        // 2. 找到第一个{和最后一个}，截取中间的纯JSON内容（自动过滤多余的解释文字）
-        const firstBrace = jsonStr.indexOf('{');
-        const lastBrace = jsonStr.lastIndexOf('}');
-        if (firstBrace === -1 || lastBrace === -1) {
-          console.error('未找到JSON边界，原始内容：', content);
-          throw new Error('模型返回内容中没有有效的JSON对象');
+      // 处理JSON输出
+      if (needJson) {
+        // 提取<json>标签之间的内容
+        const jsonMatch = content.match(/<json>([\s\S]*?)<\/json>/i);
+        if (!jsonMatch) {
+          console.error('未找到<json>标签，原始返回：', content);
+          throw new Error('模型未返回标签包裹的JSON内容');
         }
-        jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
-        // 3. 转义未转义的换行符和制表符
-        jsonStr = jsonStr.replace(/\n/g, '\\n').replace(/\t/g, '\\t');
-        // 4. 处理可能的 trailing comma（JSON不允许最后一个元素后有逗号）
+        let jsonStr = jsonMatch[1].trim();
+        // 清洗多余内容
+        jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+        // 处理可能的转义问题
+        jsonStr = jsonStr.replace(/\n/g, ' ').replace(/\t/g, ' ').replace(/\r/g, '');
+        // 去掉末尾多余逗号
         jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
         
         try {
-          return JSON.parse(jsonStr);
+          const parsed = JSON.parse(jsonStr);
+          console.log('JSON解析成功：', parsed);
+          return parsed;
         } catch (e) {
-          console.error('JSON 解析失败，原始返回内容：', content);
-          console.error('清洗后内容：', jsonStr);
-          throw new Error('模型返回的内容不是有效的 JSON 格式');
+          console.error('JSON解析失败，清洗后内容：', jsonStr);
+          console.error('原始返回内容：', content);
+          throw new Error('JSON格式错误');
         }
       }
+
+      // 非JSON直接返回
       return content;
     } catch (error: any) {
-      // 不可重试的错误直接抛出
       if (error.message?.includes('API_KEY') || error.message?.includes('模型未找到')) {
         throw error;
       }
@@ -236,7 +235,6 @@ async function callLLM(prompt: string, outputJson: boolean = true, retries: numb
       if (attempt === retries - 1) {
         throw error;
       }
-      // 指数退避等待
       await new Promise(resolve => setTimeout(resolve, Math.min(2000 * Math.pow(2, attempt), 30000)));
     }
   }
@@ -267,21 +265,18 @@ function matchShuangdianType(coreShuangdian: string): string {
   return '';
 }
 
-// ---------------------- GeminiService 类（修复了模板错误+强化格式要求） ----------------------
+// ---------------------- GeminiService 类（已适配新的调用逻辑） ----------------------
 export class GeminiService {
 
-  // 第一阶段：分析小说骨架（【修复点3：修复输出模板的类型错误，强化JSON输出要求】）
+  // 第一阶段：分析小说骨架
   async analyzeNovel(novelContent: string): Promise<string> {
     const prompt = `
     ${GLOBAL_TOP_RULES}
     ${SHUANGDIAN_LIBRARY}
     ${SUB_GENRE_RULES}
 
-    【最高优先级要求】
-    你必须输出纯JSON，禁止任何前置解释、后置说明、markdown标记，所有内容必须符合JSON格式规范。
-    
     【参考示例（仅学习逻辑结构，绝对禁止照搬内容）】
-    示例：家庭类短剧，全局终极钩子：「白手起家的小夫妻，能不能在一地鸡毛的家庭矛盾里守住自己的小日子？」
+    示例：家庭类短剧，全局终极钩子："白手起家的小夫妻，能不能在一地鸡毛的家庭矛盾里守住自己的小日子？"
     阶段爽梗规划逻辑参考：
     {
       "stage_num": 1,
@@ -317,55 +312,56 @@ export class GeminiService {
     
     【任务】
     基于输入的小说内容提炼核心卖点，可自由魔改，爽感优先，必须给主角强加穿越/系统金手指二选一，输出标准化的小说核心骨架，阶段爽梗规划必须严格参考上面的示例逻辑结构，禁止照搬示例的买房内容。
-    【输出要求（必须严格遵守，不符合直接重写）】
+    【输出要求（必须严格遵守）】
+    输出一个JSON对象，结构如下：
     {
         "base_info": {
-            "book_name": "字符串，书名，可魔改得更有爽感，符合2026年短剧命名风格",
-            "core_genre": "字符串，男频/女频",
-            "sub_genre": "字符串，从2026年最新子流派规则表中选对应标签，最多3个，用/分隔",
-            "protagonist": "字符串，主角姓名+身份+核心性格+隐藏底牌，必须包含强制加的穿越/系统金手指",
-            "gold_finger": "字符串，强制加的金手指类型+能力+触发条件，明确使用边界（仅第1集前30秒出现1次）",
-            "final_boss": "字符串，最终BOSS姓名+身份+核心战力+和主角的核心仇恨，可魔改得更嚣张更坏，符合2026年大众厌恶点",
-            "final_goal": "字符串，主角最终要完成的终极目标，可魔改得更有爽感"
+            "book_name": "书名，可魔改得更有爽感，符合2026年短剧命名风格",
+            "core_genre": "男频/女频",
+            "sub_genre": "从2026年最新子流派规则表中选对应标签，最多3个，用/分隔",
+            "protagonist": "主角姓名+身份+核心性格+隐藏底牌，必须包含强制加的穿越/系统金手指",
+            "gold_finger": "强制加的金手指类型+能力+触发条件，明确使用边界（仅第1集前30秒出现1次）",
+            "final_boss": "最终BOSS姓名+身份+核心战力+和主角的核心仇恨，可魔改得更嚣张更坏，符合2026年大众厌恶点",
+            "final_goal": "主角最终要完成的终极目标，可魔改得更有爽感"
         },
         "ultimate_hook": {
-            "content": "字符串，全剧终极二元悬念，必须是明确的是非疑问，比如「被打入斩仙台的废仙，能不能在3日问斩前反杀所有众神？」，禁止模糊表述",
-            "strengthen_nodes": ["字符串数组，每10集的强化内容，比如["第10集强化：反派放出要杀主角全家的狠话", "第20集强化：..."]"]
+            "content": "全剧终极二元悬念，必须是明确的是非疑问，比如「被打入斩仙台的废仙，能不能在3日问斩前反杀所有众神？」，禁止模糊表述",
+            "strengthen_nodes": ["每10集的强化内容，比如「第10集强化：反派放出要杀主角全家的狠话」"]
         },
         "stage_shuangdian_plan": [
             {
-                "stage_num": "数字，第1阶段就填1",
-                "stage_total_episodes": "数字，10-15之间的整数",
-                "core_shuangdian": "字符串，从2026年最新爽点库中选1-2个匹配的S级核心爽点，单阶段仅1个核心主题，用+分隔",
-                "stage_hook": "字符串，本阶段的核心二元悬念，比如「被上门反派逼到绝路的赘婿，能不能保住妻子的公司？」",
-                "bind_global_hook": "字符串，说明本阶段爽梗和全局终极钩子的关联，以及爽点爆发后对全局主线的推进作用",
+                "stage_num": 1,
+                "stage_total_episodes": 12,
+                "core_shuangdian": "从2026年最新爽点库中选1-2个匹配的S级核心爽点，单阶段仅1个核心主题，用+分隔",
+                "stage_hook": "本阶段的核心二元悬念，比如「被上门反派逼到绝路的赘婿，能不能保住妻子的公司？」",
+                "bind_global_hook": "说明本阶段爽梗和全局终极钩子的关联，以及爽点爆发后对全局主线的推进作用",
                 "full_link_nodes": {
                     "铺垫期": {
-                        "episode_range": "字符串，固定为1-3集",
-                        "core_task": "字符串，具体的铺垫任务，必须包含前三集的强冲突、底牌透底、信息差营造"
+                        "episode_range": "1-3集",
+                        "core_task": "具体的铺垫任务，必须包含前三集的强冲突、底牌透底、信息差营造"
                     },
                     "冲突升级期": {
-                        "episode_range": "字符串，固定为4-8集",
-                        "core_task": "字符串，具体的冲突升级任务，必须包含每集的拉扯点、反派升级欺辱的行为"
+                        "episode_range": "4-8集",
+                        "core_task": "具体的冲突升级任务，必须包含每集的拉扯点、反派升级欺辱的行为"
                     },
                     "small_climax": {
-                        "episode_range": "字符串，固定为第9集",
-                        "core_task": "字符串，小高潮的具体内容，必须停在爽点即将爆发的临界点"
+                        "episode_range": "第9集",
+                        "core_task": "小高潮的具体内容，必须停在爽点即将爆发的临界点"
                     },
                     "big_explosion": {
-                        "episode_range": "字符串，固定为第10集",
-                        "core_task": "字符串，大爽点爆发的具体内容，必须包含打脸过程、旁观者反应"
+                        "episode_range": "第10集",
+                        "core_task": "大爽点爆发的具体内容，必须包含打脸过程、旁观者反应"
                     },
                     "transition_period": {
-                        "episode_range": "字符串，对应阶段总集数，比如11-12集",
-                        "core_task": "字符串，转场的具体内容，必须引出下一个阶段的新爽梗"
+                        "episode_range": "11-12集",
+                        "core_task": "转场的具体内容，必须引出下一个阶段的新爽梗"
                     }
                 },
-                "forbidden_elements": "字符串数组，本阶段禁止出现的无关内容，比如支线、多余爽点、过时老梗",
-                "gold_finger_boundary": "字符串，本阶段金手指的使用边界，严格遵守仅第1集前30秒出现1次的要求"
+                "forbidden_elements": ["本阶段禁止出现的无关内容，比如支线、多余爽点、过时老梗"],
+                "gold_finger_boundary": "本阶段金手指的使用边界，严格遵守仅第1集前30秒出现1次的要求"
             }
         ],
-        "sub_genre_rules": "字符串，对应子流派的专属钩子+爽梗规则，从2026年最新子流派规则表中提取"
+        "sub_genre_rules": "对应子流派的专属钩子+爽梗规则，从2026年最新子流派规则表中提取"
     }
     
     【校验规则】
@@ -374,7 +370,6 @@ export class GeminiService {
     3. 阶段爽梗规划必须符合示例的5节点结构，每个阶段仅1个核心爽梗，禁止多爽梗并行，禁止照搬示例的买房内容
     4. 核心爽点必须从2026年最新爽点库中选择，禁止自定义，禁止使用过时老梗
     5. 所有字段不能为空，缺项直接重写
-    6. 必须输出纯JSON，禁止任何多余内容
     
     【输入的小说内容】：
     ${novelContent.slice(0, 10000)}
@@ -384,7 +379,7 @@ export class GeminiService {
     return this.formatAnalysisReport(result);
   }
 
-  // 格式化分析报告为可读文本（原逻辑保留）
+  // 格式化分析报告为可读文本（原逻辑完全保留）
   private formatAnalysisReport(skeleton: any): string {
     const info = skeleton.base_info;
     const hook = skeleton.ultimate_hook;
@@ -417,7 +412,7 @@ export class GeminiService {
     return report;
   }
 
-  // 从分析报告中提取骨架 JSON（原逻辑保留）
+  // 从分析报告中提取骨架 JSON（原逻辑完全保留）
   private extractSkeleton(analysisReport: string): any {
     const match = analysisReport.match(/<!--SKELETON_JSON_START-->(.+?)<!--SKELETON_JSON_END-->/);
     if (match) {
@@ -426,10 +421,9 @@ export class GeminiService {
     throw new Error('无法从分析报告中提取骨架数据，请重新运行分析');
   }
 
-  // 第二阶段：生成分集大纲（同样增加了格式强制要求）
+  // 第二阶段：生成分集大纲
   async generateOutline(novelContent: string, analysisReport: string, targetStageNum: number = 1): Promise<string> {
     const skeleton = this.extractSkeleton(analysisReport);
-    // 找到目标阶段的爽梗规划
     const targetStage = skeleton.stage_shuangdian_plan.find((s: any) => s.stage_num === targetStageNum);
     if (!targetStage) throw new Error(`未找到第${targetStageNum}阶段的规划，请检查分析报告`);
 
@@ -440,10 +434,6 @@ export class GeminiService {
     ${GLOBAL_TOP_RULES}
     ${SHUANGDIAN_LIBRARY}
     ${SHUANGDIAN_EXEC_RULES}
-
-    【最高优先级要求】
-    你必须输出纯JSON，禁止任何前置解释、后置说明、markdown标记，所有内容必须符合JSON格式规范。
-    
     子流派规则：${skeleton.sub_genre_rules}
     
     【基础信息】
@@ -459,6 +449,7 @@ export class GeminiService {
     【任务】
     严格按照本阶段的链路节点要求生成对应集数的竖屏短剧大纲，所有剧情100%为当前阶段核心爽梗服务，可自由魔改剧情、加冲突、加反派，爽感优先，无需拘泥原著细节。
     【输出要求（必须严格遵守）】
+    输出一个JSON对象，结构如下：
     {
         "unit_base_info": {
             "unit_num": ${targetStageNum},
@@ -466,17 +457,17 @@ export class GeminiService {
             "stage_goal": "${targetStage.bind_global_hook}",
             "stage_hook": "${targetStage.stage_hook}",
             "core_shuangdian": "${targetStage.core_shuangdian}",
-            "core_villain": "字符串，本阶段核心反派的战力/智商/势力优势，可魔改得更嚣张，符合2026年大众厌恶点",
-            "bystanders": ["字符串数组，3类旁观者：踩主角的人群、同情主角的人群、看热闹的人群"]
+            "core_villain": "本阶段核心反派的战力/智商/势力优势，可魔改得更嚣张，符合2026年大众厌恶点",
+            "bystanders": ["踩主角的人群", "同情主角的人群", "看热闹的人群"]
         },
         "episode_outlines": [
             {
-                "episode_num": "数字，集数，从1开始递增",
-                "core_plot": "字符串，30字以内概括本集核心剧情，严格对应当前阶段的链路节点任务",
-                "single_hook": "字符串，本集结尾的单集悬念，必须关联本阶段核心矛盾",
-                "shuangdian_padding": "字符串，本集对应的爽点铺垫内容，没有则填无",
-                "node_belong": "字符串，本集所属的链路节点，比如「铺垫期」",
-                "ultimate_hook_strengthen": "字符串，本集是否强化全剧终极钩子，没有则填无"
+                "episode_num": 1,
+                "core_plot": "30字以内概括本集核心剧情，严格对应当前阶段的链路节点任务",
+                "single_hook": "本集结尾的单集悬念，必须关联本阶段核心矛盾",
+                "shuangdian_padding": "本集对应的爽点铺垫内容，没有则填无",
+                "node_belong": "本集所属的链路节点，比如「铺垫期」",
+                "ultimate_hook_strengthen": "本集是否强化全剧终极钩子，没有则填无"
             }
         ]
     }
@@ -487,7 +478,6 @@ export class GeminiService {
     3. 核心爽梗占比100%，无任何无关支线/爽点，金手指不越界
     4. 反派足够强、足够坏，每集都有3类旁观者的反应烘托
     5. 严格遵守对应子流派和爽点的专属规则，前三集必须符合秒级节奏要求
-    6. 必须输出纯JSON，禁止任何多余内容
     `;
 
     const outlineData = await callLLM(prompt, true);
@@ -496,7 +486,7 @@ export class GeminiService {
     return text;
   }
 
-  // 格式化大纲为可读文本（原逻辑保留）
+  // 格式化大纲为可读文本（原逻辑完全保留）
   private formatOutline(outline: any): string {
     const info = outline.unit_base_info;
     let text = `📋 单元大纲：${info.episode_range}\n`;
@@ -518,7 +508,7 @@ export class GeminiService {
     return text;
   }
 
-  // 第三阶段：生成全部脚本（原逻辑保留，非JSON输出不会有格式问题）
+  // 第三阶段：生成全部脚本（原逻辑完全保留）
   async generateScripts(outlineText: string, phase: number, novelContent: string, formattingRef?: string): Promise<string> {
     const match = outlineText.match(/<!--OUTLINE_JSON_START-->(.+?)<!--OUTLINE_JSON_END-->/);
     if (!match) {
