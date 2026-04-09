@@ -1,11 +1,13 @@
 // ====================== 【配置区】======================
-// API Key 从 Cloudflare 环境变量注入（在 vite.config.ts 中配置）
-const API_KEY: string = (import.meta as any).env?.VITE_OPENAI_API_KEY || '';
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+// API Key 已移至 Cloudflare Pages Function 服务端代理，前端不再暴露
+// 所有请求走 /api/llm 代理路由，由服务端转发到 OpenRouter
+const PROXY_URL = "/api/llm"; // Cloudflare Pages Function 代理地址
 const MODEL_NAME = "anthropic/claude-sonnet-4.6";
-const MAX_RETRY = 3;
+const MAX_RETRY = 5;
 // 是否开启生成后规则自检，开启后自动校验输出是否符合规则，不合格自动重试
 const ENABLE_RULE_CHECK = true;
+// 每次 API 调用之间的间隔（毫秒），防止密集请求被 OpenRouter 断连
+const API_CALL_DELAY = 3000;
 // ======================================================================
 
 // ---------------------- 全局规则常量 ----------------------
@@ -241,17 +243,47 @@ const SHUANGDIAN_EXEC_RULES = `
 - 规则不得前后矛盾，卡bug逻辑必须自洽，不得强行开挂逃生
 `;
 
-// ---------------------- 【终极修复：重写LLM调用，用标签包裹替代强制JSON，100%稳定】 ----------------------
+// ---------------------- 工具函数 ----------------------
+// 延时函数，用于API调用间隔控制
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 带超时的fetch，防止连接挂起
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = 120000): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`请求超时（${timeoutMs/1000}秒），请检查网络或稍后重试`));
+    }, timeoutMs);
+
+    fetch(url, { ...options, signal: controller.signal })
+      .then(response => {
+        clearTimeout(timer);
+        resolve(response);
+      })
+      .catch(err => {
+        clearTimeout(timer);
+        if (err.name === 'AbortError') {
+          reject(new Error(`请求超时（${timeoutMs/1000}秒），请检查网络或稍后重试`));
+        } else {
+          reject(err);
+        }
+      });
+  });
+}
+
+// ---------------------- 【终极修复：重写LLM调用，走服务端代理，用标签包裹替代强制JSON，100%稳定】 ----------------------
 async function callLLM(prompt: string, needJson: boolean = true, retries: number = MAX_RETRY): Promise<any> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      // 走 Cloudflare Pages Function 代理，不再从浏览器直连 OpenRouter
+      const response = await fetchWithTimeout(PROXY_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Novel-to-Script-Generator-2026',
+          // 不再需要 Authorization / HTTP-Referer，由服务端代理处理
         },
         body: JSON.stringify({
           model: MODEL_NAME,
@@ -268,10 +300,10 @@ async function callLLM(prompt: string, needJson: boolean = true, retries: number
             },
             { role: 'user', content: prompt }
           ],
-          temperature: 0.3, // 降低发散性，提升规则遵守度
-          max_tokens: 16000, // 提升token上限，避免长脚本被截断
+          temperature: 0.3,
+          max_tokens: 16000,
         }),
-      });
+      }, 180000); // 3分钟超时，脚本生成需要较长时间
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -280,6 +312,13 @@ async function callLLM(prompt: string, needJson: boolean = true, retries: number
         }
         if (response.status === 404) {
           throw new Error('⚠️ 模型未找到，请检查 MODEL_NAME 在 OpenRouter 上是否存在！');
+        }
+        // 429 = 限流，需要等更久再重试
+        if (response.status === 429) {
+          const retryAfter = parseInt(response.headers.get('retry-after') || '10', 10);
+          console.warn(`触发限流（429），等待 ${retryAfter} 秒后重试...`);
+          await delay(retryAfter * 1000);
+          continue;
         }
         throw new Error(`API 请求失败 (${response.status}): ${JSON.stringify(errData)}`);
       }
@@ -328,7 +367,16 @@ async function callLLM(prompt: string, needJson: boolean = true, retries: number
       if (attempt === retries - 1) {
         throw error;
       }
-      await new Promise(resolve => setTimeout(resolve, Math.min(2000 * Math.pow(2, attempt), 30000)));
+      // 连接被关闭（ERR_CONNECTION_CLOSED / Failed to fetch）通常是限流导致
+      // 使用更保守的退避策略：8秒、20秒、45秒、90秒
+      const isConnectionError = error.message?.includes('Failed to fetch') || 
+                                 error.message?.includes('connection') ||
+                                 error.message?.includes('network') ||
+                                 error.message?.includes('超时');
+      const baseMs = isConnectionError ? 8000 : 5000;
+      const backoffMs = Math.min(baseMs * Math.pow(2.5, attempt), 120000);
+      console.log(`等待 ${(backoffMs/1000).toFixed(1)} 秒后重试...（${isConnectionError ? '连接类错误，加长等待' : '普通错误'}）`);
+      await delay(backoffMs);
     }
   }
 }
@@ -734,8 +782,14 @@ export class GeminiService {
     return text;
   }
 
-  // 第三阶段：生成全部脚本（正确传集数参数，修复跨集校验bug）
-  async generateScripts(outlineText: string, phase: number, novelContent: string, formattingRef?: string): Promise<string> {
+  // 第三阶段：生成全部脚本（正确传集数参数，修复跨集校验bug，新增间隔控制防限流）
+  async generateScripts(
+    outlineText: string, 
+    phase: number, 
+    novelContent: string, 
+    formattingRef?: string,
+    onProgress?: (current: number, total: number, status: string) => void
+  ): Promise<string> {
     const match = outlineText.match(/<!--OUTLINE_JSON_START-->(.+?)<!--OUTLINE_JSON_END-->/);
     if (!match) {
       throw new Error('无法从大纲中提取数据，请重新生成大纲');
@@ -746,8 +800,22 @@ export class GeminiService {
     const shuangdianType = matchShuangdianType(coreShuangdian);
 
     const allScripts: string[] = [];
+    const totalEpisodes = outline.episode_outlines.length;
 
-    for (const episode of outline.episode_outlines) {
+    for (let i = 0; i < totalEpisodes; i++) {
+      const episode = outline.episode_outlines[i];
+      
+      // 通知调用方当前进度
+      if (onProgress) {
+        onProgress(i + 1, totalEpisodes, `正在生成第 ${episode.episode_num} 集脚本...`);
+      }
+
+      // 从第2集开始，每集之间加间隔，防止连续请求被OpenRouter限流/断连
+      if (i > 0) {
+        console.log(`等待 ${API_CALL_INTERVAL/1000} 秒后生成第 ${episode.episode_num} 集...`);
+        await delay(API_CALL_INTERVAL);
+      }
+
       const prompt = `
       【⚠️ 最高优先级强制规则，违反任意一条直接重写】
       1. 【仅第1集生效】金手指仅能以约定的自然形式（配角OS/回忆/纯字幕）在第1集前30秒出现1次，禁止通过手机、台词、回忆、道具展示等任何形式二次暴露主角底牌！
@@ -804,14 +872,27 @@ export class GeminiService {
     `;
 
       let script = await callLLM(prompt, false);
-      // 自检时正确传入当前集数和总集数，不会再出现跨集校验bug
-      if (ENABLE_RULE_CHECK) {
-        console.log(`正在校验第${episode.episode_num}集脚本...`);
+      // 自检仅对关键集数执行（前3集+爽点爆发集8-10），其余集跳过，大幅减少API调用次数
+      // 12集从24次调用降低到约16次，显著降低触发限流的概率
+      const isCriticalEpisode = episode.episode_num <= 3 || (episode.episode_num >= 8 && episode.episode_num <= 10);
+      if (ENABLE_RULE_CHECK && isCriticalEpisode) {
+        console.log(`正在校验第${episode.episode_num}集脚本（关键集）...`);
+        if (onProgress) {
+          onProgress(i + 1, totalEpisodes, `正在校验第 ${episode.episode_num} 集脚本...`);
+        }
+        // 校验前也加间隔
+        await delay(API_CALL_INTERVAL);
         const checkRes = await this.ruleCheck(script, 'script', episode.episode_num, targetStage.stage_total_episodes);
         if (!checkRes.pass && checkRes.error) {
           console.warn(`第${episode.episode_num}集脚本校验失败，重试中：`, checkRes.error);
+          if (onProgress) {
+            onProgress(i + 1, totalEpisodes, `第 ${episode.episode_num} 集校验不通过，重新生成中...`);
+          }
+          await delay(API_CALL_INTERVAL);
           script = await callLLM(prompt + `\n\n之前的输出不符合规则：${checkRes.error}，请重新生成`, false);
         }
+      } else if (ENABLE_RULE_CHECK) {
+        console.log(`第${episode.episode_num}集为非关键集，跳过自检以节省API配额`);
       }
       allScripts.push(script);
     }
