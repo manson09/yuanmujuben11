@@ -4,9 +4,10 @@ const MODEL_NAME = "anthropic/claude-sonnet-4.6";
 const MAX_RETRY = 5;
 const ENABLE_RULE_CHECK = true;
 const API_CALL_DELAY = 3000;
-// =====================================================================
+const DELAY_BETWEEN_EPISODES = 5000;  // ← 【修复#2】新增：集间延迟
+const USER_INPUT = "请在这里填写你的短剧需求";  // ← 【修复#1】新增：用户输入
 
-// ====================== 【金手指维度化分类体系】======================
+// ====================== 【金手指框架】======================
 const GOLD_FINGER_FRAMEWORK = `
 ## 🔧 金手指分类与匹配框架
 
@@ -48,6 +49,14 @@ const GOLD_FINGER_FRAMEWORK = `
 4. 显性-系统型：仅直播/规则怪谈类使用
 5. 半显性型：主角知道自己有某种能力但低估了自身实力
 
+### 金手指量化公式
+金手指必须可量化——不能是"很强"，必须是"强到什么程度"。
+示例：
+- ❌ "他武功很高" → ✅ "一拳打穿30cm钢板/10秒内制服12个武装人员"
+- ❌ "他很有钱" → ✅ "个人可调动资产9700亿/一个电话能借调军方直升机"
+- ❌ "他医术很好" → ✅ "银针扎入3秒后病人睁眼/世界公认不治之症他能治"
+- ❌ "他右眼有能力" → ✅ "右眼能看穿人体经络/能看到3公里外蚂蚁/能预判所有攻击轨迹"
+
 ### 透底形式优先级
 Tier 1：知情配角OS/吐槽/震惊反应
 Tier 2：主角不经意行为暴露实力
@@ -55,11 +64,38 @@ Tier 3：碎片化回忆/闪回
 Tier 4：纯文字字幕
 Tier 5：系统弹窗（仅直播/怪谈类）
 
+### ⚠️ 透底的本质定义（最重要的规则之一）
+
+透底不是"告诉观众主角过去有多强"。
+透底是"让观众知道一个只有观众知道、所有剧内角色都不知道的具体信息，这个信息让观众能预期主角以后靠它翻盘"。
+
+#### 透底三要素检验（缺一不可）：
+1. 【独占性】：这个信息只有观众知道，剧内角色（包括反派、身边人）都不知道
+2. 【具体性】：观众能用一句话说出"主角的底牌是XXX"，而不是"主角好像很厉害"
+3. 【可期待性】：观众知道这个信息后，能产生"他什么时候用这个底牌翻盘？"的期待
+
+#### 透底失败的常见错误：
+❌ "观众知道他过去是战神" → 过去式，不等于现在有底牌
+❌ "观众知道他右眼受伤了" → 观众和剧内角色知道的一样多，没有信息差
+❌ "观众知道他很厉害但不知道具体厉害在哪" → 没有具体性，无法形成期待
+❌ "配角念了一遍主角的履历" → 这是信息展示不是信息差
+
+✅ 正确透底举例：
+- 观众看到他私下摘开绷带，右眼完好且有异能（金色瞳孔/能看到常人看不到的东西） → 剧内角色都以为他瞎了
+- 观众看到师父OS"练气九十九万层" → 主角和所有人都以为他是废物
+- 观众看到他翻出一本通讯录，里面全是国家级大佬的私人号码 → 所有人以为他无权无势
+- 观众看到系统面板"宿主当前资产：9700亿" → 所有人以为他是穷鬼
+
+#### 骨架阶段必须回答的问题：
+"第1集结束后，观众知道了什么只有观众知道的信息？这个信息是什么？剧内角色对此的错误认知是什么？"
+如果答不上来 → 透底失败，必须重做。
+
 ### 禁止事项
 - 禁止所有题材一律用系统弹窗
 - 禁止金手指类型和爽梗不匹配
 - 禁止隐性金手指下主角主动使用
 - 禁止无透底
+- 禁止透底信息不通过三要素检验
 `;
 
 // ====================== 【第1集开场策略】======================
@@ -72,6 +108,7 @@ const EPISODE_1_STRATEGIES = `
   场景1（前30秒·炸场）：直接给主角最强状态的劲爆画面（战场碾压/一击毙敌/单挑几十人），画面有视觉冲击力，动作干脆利落，配角反应衬托碾压
   场景2（藏的理由·不超过30秒）：简短交代退隐/隐藏原因
   场景3（反差登场）：时间跳转，主角以最普通/最狼狈的样子出现在日常场景，被人当废物/被拦/被看不起
+  ⚠️ 透底时机：在炸场画面中或画面结束后的独处瞬间，给观众展示一个只有观众知道的秘密（透底三要素必须通过）
 ⚠️ 禁止：禁止第1集全程都在"藏"的状态；禁止炸场画面只是配角念简历
 
 ### 策略B：日常暴露（适用于：天赋异禀/不自知/气运流/隐性金手指类）
@@ -107,6 +144,302 @@ const EPISODE_1_STRATEGIES = `
 ### 关键原则
 不管用哪个策略，第1集前30秒必须让观众直观看到主角的碾压级底牌。
 "直观"标准：观众看完能用一句话说出"这个主角牛在哪"。
+第1集结束后观众必须掌握一个通过透底三要素检验的独占信息。
+`;
+
+// ====================== 【爽感曲线强制规则】======================
+const SHUANG_CURVE_RULES = `
+## 📈 爽感曲线强制规则（10集制）
+
+### 爽感值标准（1-5星）
+| 星级 | 定义 | 观众状态 |
+|------|------|---------|
+| ☆ | 最低谷，主角被全面压制 | 观众憋屈得想摔手机但因为信息差知道他有底牌所以继续看 |
+| ★★ | 低位，主角被踩但有微小暗示 | 观众隐约期待 |
+| ★★★ | 中位，有小爽点但没有大释放 | 观众觉得有意思 |
+| ★★★★ | 高位，重大反转或半释放 | 观众发弹幕"爽" |
+| ★★★★★ | 最高潮，全面碾压 | 观众爽到截图发朋友圈 |
+
+### 10集爽感曲线模板
+第1集★★★ → 第2集★★ → 第3集★★ → 第4集★ → 第5集☆ → 第6集★★★ → 第7集★★★★ → 第8集★★★★★ → 第9集★★ → 第10集★★★
+
+### 关键规则
+1. 第5集必须是最低谷（☆），不可在其他集出现最低谷
+2. 第8集必须是最高潮（★★★★★），不可在其他集出现最高潮
+3. 第1-5集整体下行趋势（允许第1集因炸场有★★★，但之后必须降）
+4. 第6集必须是拐点：从最低谷开始回升，但只释放一口气（★★★）
+5. 第6-8集必须连续上行，不允许中间下跌
+6. 第9集必须回落（★★），不允许第8集后继续高潮
+7. 第10集★★★左右，留悬念不留满足感
+
+### ⚠️ 爽感曲线的本质
+爽感 = 憋屈积累量 × 释放速度
+- 如果没有足够的憋屈积累（第2-5集不够惨），第8集的碾压就不够爽
+- 如果释放太分散（每集都赢一点），最终碾压就没有冲击力
+- 所以：前5集越惨 → 第8集越爽。这是铁律。
+`;
+
+// ====================== 【逐集爽感引擎】======================
+const PER_EPISODE_ENGINE = `
+## 🎯 逐集爽感引擎（10集制·每集必须严格执行对应引擎）
+
+### 核心原理
+每一集观众"划不走"的原因完全不同。不是每集都靠"主角赢"来留人。
+AI必须明确知道：这一集靠什么让观众留下来。
+
+---
+
+### 第1集引擎：信息差炸弹
+【观众心理】"卧槽他这么强？但所有人都不知道？"
+【执行要点】
+- 按开场策略执行（A/B/C/D）
+- 第1集结束时，观众必须掌握一个"只有观众知道的秘密"（通过透底三要素检验）
+- 这个秘密要具体到观众能复述："他右眼没瞎而且有金色瞳孔/他有九十九万层修为/他通讯录里全是大佬"
+- 结尾制造反差：主角最强状态→被当成废物，观众急得不行
+【本集留人靠】信息差带来的优越感（"我知道你们不知道的事"）
+【禁止】禁止主角和剧内角色掌握相同信息量；禁止透底信息模糊不可量化
+
+---
+
+### 第2集引擎：忍耐极限
+【观众心理】"他被骂成这样居然忍得住？他到底什么时候爆发？"
+【执行要点】
+- 主角进入核心场景（婆家/公司/宗门/学校），遭遇第一波社交羞辱
+- 羞辱必须具体且刺痛：不是泛泛的"你是废物"，而是针对主角最在意的点精准踩（嘲笑他的伤疤/穷/学历/身份）
+- 主角明明有能力反击但选择忍——必须给一个合理的忍耐理由（为了某个人/为了某个目标）
+- 唯一的暗示：主角有1个不经意的微动作暴露实力（但剧内角色没注意到，只有观众看到了）
+  示例：有人甩了个东西过来，主角下意识接住了，速度不正常，但没人在意
+- 嘲讽者（骨架中mockers指定的角色）必须在本集出场并说出标志性嘲讽台词
+- 旁观者三类到位：嘲讽者（跟着踩）、冷眼者（看热闹）、隐约察觉者（"这人好像不简单？"但没说出口）
+- 结尾：更大的羞辱/压迫即将到来（有人要对主角身边人动手/更高层的人出面打压）
+【本集留人靠】忍耐带来的期待感（"他什么时候爆发？我要看着他打脸"）
+【禁止】
+- ⚠️ 禁止主角本集出手打人/智商碾压/展示任何明确实力
+- 禁止主角在本集赢任何一场冲突
+- 禁止嘲讽是泛泛的"众人纷纷嘲笑"——必须具体到谁说了什么
+
+---
+
+### 第3集引擎：情感绑定
+【观众心理】"他身边这个人挺好的/这个反派太可恶了，我要看他被打脸"
+【执行要点】
+- 冲突升级到第二层（从社交羞辱→经济打压/断生路），不重复第2集的冲突模式
+- 塑造情感锚点：身边有一个人（女主/兄弟/长辈）在所有人都踩主角时站出来维护他（可以是很小的举动）
+- 塑造仇恨锚点：反派做了一件让观众"记住"的恶事（不是泛泛的坏，而是具体的、让人来气的行为）
+- 主角有一个"差点暴露"的瞬间但掩饰过去了——观众紧张又期待
+- 嘲讽者继续加码（第二轮嘲讽，比第2集更过分）
+- 结尾：反派盯上了主角身边人（情感锚点），威胁升级到"不止针对主角自己"
+【本集留人靠】情感投入（"这个人不能被欺负"/"这个反派必须死"）
+【禁止】
+- 禁止主角出手
+- 禁止冲突和第2集同类型（第2集是社交羞辱→第3集必须是经济/断路/更实质的打压）
+- 禁止情感锚点角色单独长段戏份（必须和主线冲突绑定）
+
+---
+
+### 第4集引擎：底线触碰
+【观众心理】"这也太过分了！他不可能再忍了吧？"
+【执行要点】
+- 反派手段升级到人身威胁/派打手——从"欺负你"变成"要废你"
+- 主角身边的情感锚点被波及（女主被为难/兄弟被打/长辈被威胁）
+- 主角的底线被触碰：不是他自己被打（他能忍），是他最在意的人被伤害
+- ⚠️ 暗线启动：主角在"失败/来晚一步"的同时，悄悄做了一件事（只有观众看到）
+  示例：所有人都散了之后，主角独自拨出一个电话/发出一条消息/去见了一个人/藏了一样东西
+  这就是暗线种子——第7集引爆时会回扣到这一刻
+- 嘲讽者第三轮加码（"你连自己人都保护不了"/"就你也配？"）
+- 结尾：主角一个人站在某处，背对镜头——观众知道他要动了，但所有剧内角色都以为他怂了
+【本集留人靠】"反派触碰了底线"的愤怒 + "他暗中开始布局了"的期待
+【禁止】
+- 禁止主角在本集正面出手反击（憋着！）
+- 禁止暗线行动被任何剧内角色发现
+- 禁止结尾是主角哭/崩溃（不能弱，只能沉默/危险的平静）
+
+---
+
+### 第5集引擎：绝境感
+【观众心理】"不会吧？这也太惨了。他到底什么时候翻盘？不行我必须看下去"
+【执行要点】
+- 这是最低谷，所有方向同时收紧：
+  ① 经济路被断
+  ② 社交上被孤立
+  ③ 身边人被反派控制/威胁/受伤
+  ④ 之前有一个人隐约支持主角→这集这个人也动摇了/被迫站到对面
+- 反派最嚣张的瞬间：反派以为彻底赢了，开始当众羞辱主角（公开场合，人越多越好）
+- 嘲讽者达到顶峰：之前所有嘲讽的人齐聚，最刺激的话在这一集说出
+- ⚠️ 暗线微小进展（只有观众看到）：第4集种下的种子有了微小进展（电话回了/人到位了/东西被拿到了），给观众一丝希望
+- 结尾（暴风雨前的宁静）：主角背对所有人站在某处，做了一个标志性动作（卷袖子/摘眼罩/转戒指），眼神变了——第一次让观众看到"杀意"
+  这个画面必须有视觉冲击力，必须让观众鸡皮疙瘩起来
+【本集留人靠】"憋到极致"的窒息感 + "他要爆发了"的预感
+【禁止】
+- ⚠️ 绝对禁止主角在本集出手/赢任何一次
+- 禁止跳过低谷直接反转（必须让观众"陪主角"在低谷里待满一集）
+- 禁止主角崩溃哭泣（可以沉默/咬牙/攥拳，不能哭）
+- 禁止观众看不到任何希望（暗线微进展是必须的）
+
+---
+
+### 第6集引擎：释放一口气
+【观众心理】"终于！他开始动了！但好像还没完全放开？"
+【执行要点】
+- 主角终于出手，但只解决1个具体问题（不是全面碾压，只是"止血"）
+  示例：身边人被威胁 → 主角精准出手解除这一个威胁，但整体困局还在
+- 出手方式有讲究：
+  ✅ 快准狠，一次解决，不拖泥带水
+  ✅ 展示了一部分实力，但观众能感觉到"他没有全力"
+  ❌ 长篇打斗（这不是大高潮）
+  ❌ 全面碾压所有反派（太早了）
+- 旁观者反应关键：
+  嘲讽者第一次"愣住"——不是害怕，是困惑（"他怎么会？"）
+  隐约察觉者开始认真审视主角
+  普通旁观者窃窃私语
+- ⚠️ 但立刻引入更大的威胁：主角刚解决小问题 → 更强的反派/更高层的人出面了 → 观众意识到"这才是真正的对手"
+- 暗线继续推进（主角利用了暗线的一部分，但全貌还没有揭示）
+- 结尾：更大的对手正面登场/发出威胁，观众知道"好戏才真正开始"
+【本集留人靠】"终于出手了"的小爽 + "更强的对手来了"的紧张
+【禁止】
+- 禁止本集解决超过1个核心问题（只能止血，不能治愈）
+- 禁止出手后所有人立刻认怂（嘲讽者只是困惑，不是害怕）
+- 禁止没有引入更高层级威胁
+
+---
+
+### 第7集引擎：反转揭底
+【观众心理】"卧槽原来他早就布好局了！第4集那个电话原来是……"
+【执行要点】
+- ⚠️ 暗线全面引爆：第4集种下的种子 → 第5集的微进展 → 第6集用了一部分 → 这一集全盘揭示
+  观众恍然大悟："原来他第4集打那个电话是为了这个！第5集那个人到位是因为……"
+- 反转必须有伏笔支撑：每一个"原来如此"都必须对应前面具体哪一集的哪个场景
+  ✅ "原来第4集他离开宴会的10分钟是去见了XXX"
+  ✅ "原来第5集寄出去的那封信是给XXX的证据"
+  ❌ "突然冒出一个从未出现的人来帮忙"（这是开挂不是反转）
+- 主角出手但还没全力（70%实力），解决了大部分问题
+- 之前嘲讽者开始被打脸（至少1个嘲讽者在本集被打脸，回扣其具体嘲讽台词）
+- 旁观者反应升级：嘲讽者惊恐/冷眼者开始站队/支持者扬眉吐气
+- 结尾：主角和本阶段主要反派终于正面相对，最大的对决即将开始——戛然而止
+  （不要在第7集打完！要在"即将开打"时黑幕）
+【本集留人靠】"原来他早就知道"的智商碾压爽感 + "最终对决马上来"的期待
+【禁止】
+- ⚠️ 禁止反转没有对应前面集数的具体伏笔（"凭空变出帮手"=不及格）
+- 禁止本集彻底解决所有冲突（留30%给第8集）
+- 禁止主角全力出手（留最强一击给第8集）
+
+---
+
+### 第8集引擎：全面碾压
+【观众心理】"爽！太爽了！终于等到这一刻了！"
+【执行要点】
+- 这是全阶段最爽的一集，所有憋屈在这里清算
+- 主角全力出手，碾压级别：不是"赢了"，是"对手毫无还手之力"
+- 旁观者反应必须分层且充分（至少3层，越多越好）：
+  层1：之前最嚣张的嘲讽者→ 恐惧/腿软/脸色发白（必须带名字+回扣原话）
+  层2：之前冷眼旁观的人→ 震惊/后悔/"我当初怎么没看出来"
+  层3：一直支持主角的人→ 热泪盈眶/扬眉吐气/"我就知道"
+  层4（可选）：反派阵营内部→ 倒戈/逃跑/互相甩锅
+- 打脸必须回扣具体台词：
+  第2集嘲讽者说"就你也配在这吃饭？" → 第8集这个人被赶出去时主角路过说"这饭你吃不下了？"
+  第3集嘲讽者说"穷鬼还想竞标？" → 第8集竞标结果主角赢了，镜头给嘲讽者脸3秒
+- 主角态度关键：碾压时轻描淡写，不张牙舞爪——越平静越爽
+  ✅ "刚才谁说我是废物来着？我记性不太好。"
+  ❌ "你们这些蝼蚁不配与我为敌！"（太中二）
+- 爽感公式：第8集爽感 = 第5集憋屈程度 × 打脸回扣具体度 × 旁观者反应层数
+- 结尾：尘埃落定后，一个新的信息突然出现——更大的威胁浮出水面（一个电话/一条消息/一个人出现）
+【本集留人靠】全面释放前7集积攒的所有憋屈感，观众爽到发弹幕"太爽了"
+【禁止】
+- 禁止碾压过程拖泥带水（快准狠，不要来回拉锯）
+- 禁止打脸不回扣具体台词（之前谁说了什么嘲讽的话，这一集必须精确回扣）
+- 禁止旁观者反应少于3层
+- 禁止主角碾压后长篇大论解释自己多厉害（行为碾压，语言轻描淡写）
+- 禁止本集没有引出下一阶段的威胁（不能全部收干净，必须留尾巴）
+
+---
+
+### 第9集引擎：新悬念
+【观众心理】"等等，这个新出来的人/事什么来头？比之前那个还猛？"
+【执行要点】
+- 战果消化（不超过30%篇幅）：身边人对主角态度转变、之前受伤的人恢复、嘲讽者现状（落魄/巴结/回避）
+- 新威胁具象化（至少50%篇幅）：
+  ① 新反派出场或暗示：级别比本阶段反派至少高一个量级
+  ② 新反派和主角的关系更复杂：不能只是"另一个坏人"，必须有纠葛（前战友/师兄/亲人/恩人之子）
+  ③ 新威胁对准主角的核心软肋：第1阶段反派打的是外围（钱/面子），新威胁直指核心（身份/秘密/命/最重要的人）
+- 主角状态：有一个短暂的"日常"画面（修复身边关系/难得的松弛），但这个松弛画面会被突然打破
+- 终极钩子强化：终极悬念往前推进一步（观众对终极谜底更好奇了）
+- 感情线可以推进，但必须绑定在冲突中
+- 结尾：新威胁正式亮出獠牙——一个让观众意识到"这次比上次严重多了"的事件发生
+【本集留人靠】"新敌人比旧敌人更强"的升级感 + "主角的核心秘密/软肋被触及"的危机感
+【禁止】
+- ⚠️ 禁止整集都是感情戏/日常戏/回忆杀（最多30%）
+- 禁止新威胁和旧威胁同类型（旧反派是土豪→新反派不能还是另一个土豪）
+- 禁止主角在本集再出手打人（刚大爽完，要冷却）
+
+---
+
+### 第10集引擎：升级恐惧
+【观众心理】"不会吧，这个新威胁这么强？下一阶段呢？？"
+【执行要点】
+- 新威胁展示实力：让观众直观看到新反派/新危机有多强
+- 主角面临更大的抉择：不再是"打不打"的问题，而是"打这个会失去什么"的问题
+- 主角的金手指面临边界：之前的底牌在这个新威胁面前好像不够用了
+- 终极钩子再强化：终极悬念再推进一步，信息量增加但谜底仍然没揭开
+- 结尾：必须是一个强钩子画面——让观众必须追下一阶段
+【本集留人靠】升级感 + 悬念
+【禁止】
+- 禁止这一集什么事都没发生只铺设定
+- 禁止新威胁只是口头上"很强"但没有具象展示
+- 禁止结尾钩子是纯台词没有画面
+
+### ⚠️ 贯穿10集的强制规则
+
+#### 1. 暗线必须从第4集开始埋、第7集引爆
+- 第4集：主角在"输"的同时悄悄做了一件事（打电话/发消息/见人/藏东西）
+- 第5集：暗线微小进展（回复了/人到位了/东西被拿到了），只有观众看到
+- 第6集：主角出手时用到了暗线的一部分（但观众还不知道全貌）
+- 第7集：暗线全面引爆，观众恍然大悟"原来第4集他就开始布局了"
+
+如果第7集的反转没有对应第4-5集的具体伏笔 → 这是"伪反转"，观众不会爽，只会觉得"开挂"
+
+#### 2. 嘲讽者必须有名有姓有记忆点
+- 至少2个嘲讽者有名字、有标志性嘲讽台词、有具体打脸时刻
+- 打脸时必须回扣原话
+- 禁止泛泛的"众人纷纷嘲笑" → 必须具体到"张总冷笑着说了什么/李太太撇嘴说了什么"
+
+#### 3. 信息差必须贯穿始终
+- 每一集结束时自检："此刻观众知道但剧内角色不知道的信息是什么？"
+- 如果答案是"没有" → 这一集缺乏信息差，需要补
+- 信息差是分层释放的：
+  第1集：观众知道A（主角底牌）
+  第3集：观众知道A+B（反派不知道的暗线）
+  第5集：观众知道A+B+C（主角在绝境中悄悄布的局）
+  第7集：A+B+C同时引爆，剧内角色终于知道了，但此时观众已经获得了D（下一阶段的信息）
+
+#### 4. 主角出手次数硬控制
+| 集数 | 出手上限 | 说明 |
+|------|---------|------|
+| 第1集 | 1次（炸场画面） | 过去式/回忆/闪回，不是当前时间线出手 |
+| 第2集 | 0次 | 只允许1个微动作暗示 |
+| 第3集 | 0次 | 只允许1个"差点暴露"瞬间 |
+| 第4集 | 0次 | 主角"输"了 |
+| 第5集 | 0次 | 绝对不出手 |
+| 第6集 | 1次 | 精准出手解决1个问题 |
+| 第7集 | 1-2次 | 配合暗线引爆 |
+| 第8集 | 不限 | 全面碾压 |
+| 第9集 | 0次 | 冷却期 |
+| 第10集 | 0-1次 | 最多试探新威胁 |
+
+#### 5. 每集结尾钩子类型不能重复
+| 集数 | 结尾钩子类型 |
+|------|-------------|
+| 第1集 | 反差钩子 |
+| 第2集 | 威胁升级钩子 |
+| 第3集 | 身边人危险钩子 |
+| 第4集 | 暗线启动钩子 |
+| 第5集 | 暴风雨前钩子 |
+| 第6集 | 更大危机钩子 |
+| 第7集 | 终极对决钩子 |
+| 第8集 | 新威胁钩子 |
+| 第9集 | 新敌亮牙钩子 |
+| 第10集 | 终极悬念钩子 |
+
+禁止连续两集用同类型钩子
 `;
 
 // ====================== 【前3集节奏规则】======================
@@ -114,49 +447,59 @@ const FIRST_3_EPISODES_RULES = `
 ## 📐 前3集强制节奏规则
 
 ### 策略A（先炸后藏）的前3集
-#### 第1集（500-700字）：
+#### 第1集（500-700字）引擎：信息差炸弹
 - 场景1：劲爆的主角碾压画面（战斗/任务），主角亲自上场
 - 配角反应衬托碾压（OS/对话中量化数据）
+- 透底场景：给观众展示只有观众知道的秘密（必须通过透底三要素检验）
 - 场景2：简短交代隐藏原因（不超过4行）
 - 场景3：时间跳转，主角普通人身份出现，遭遇第一个冲突
-- 结尾钩子
+- 结尾钩子类型：反差钩子
+- 主角出手：1次（炸场画面，过去式/回忆）
 
-#### 第2集（500-700字）：
+#### 第2集（500-700字）引擎：忍耐极限
 - 反差全面铺开：主角以"废物"身份进入核心场景
-- 第一层冲突爆发，旁观者三类到位
+- 第一层冲突爆发（社交羞辱），旁观者三类到位
+- 嘲讽者（有名有姓）出场并说出标志性嘲讽台词
 - 主角不经意小动作暗示实力（剧内角色没注意到）
-- 不释放爽点，反差持续拉大
-- 结尾在更大压迫到来时戛然而止
+- ⚠️ 主角不出手，不赢任何冲突，反差持续拉大
+- 结尾钩子类型：威胁升级钩子
 
-#### 第3集（500-700字）：
+#### 第3集（500-700字）引擎：情感绑定
 - 冲突升级到第二层（经济打压/断生路），不重复第2集
-- 反派动用资源打压主角或身边人
+- 情感锚点角色在所有人踩主角时维护他
+- 反派做了一件让观众"记住"的具体恶事
+- 嘲讽者第二轮加码（比第2集更过分）
 - 主角有一个"差点暴露"瞬间但掩饰过去
-- 结尾在第三层威胁出现时戛然而止
+- ⚠️ 主角不出手
+- 结尾钩子类型：身边人危险钩子
 
 ### 策略B（日常暴露）的前3集
-#### 第1集（500-700字）：
+#### 第1集（500-700字）引擎：信息差炸弹
 - 场景1：主角做日常事，无意间做逆天之事
-- 知情配角OS量化透底
+- 知情配角OS量化透底（必须通过透底三要素检验）
 - 场景2：主角离开安全区进入主线
-- 结尾钩子
+- 结尾钩子类型：反差钩子
 
-#### 第2集（500-700字）：
+#### 第2集（500-700字）引擎：忍耐极限
 - 被当废物/新人，遭遇第一层嘲讽
+- 嘲讽者（有名有姓）出场并说出标志性嘲讽台词
 - 主角浑然不觉，做出让旁人困惑的举动
 - 三类旁观者到位
-- 结尾在更强的人注意到主角时戛然而止
+- ⚠️ 主角不出手
+- 结尾钩子类型：威胁升级钩子
 
-#### 第3集（500-700字）：
+#### 第3集（500-700字）引擎：情感绑定
 - 被逼"出手"，主角以为很普通
-- 碾压对手，全场震惊，主角一脸懵
-- 结尾在更大势力出现时戛然而止
+- 碾压对手，全场震惊，主角一脸懵（隐性金手指特殊：这算"无意出手"不违反引擎规则）
+- 情感锚点角色出现
+- 结尾钩子类型：身边人危险钩子
 
 ### 通用禁止项
 - 禁止第1集主角全程不出场只靠配角念简历
 - 禁止前3集主角全程沉默被动
 - 禁止连续2集相同冲突
 - 主角前3集至少3句个性台词
+- 禁止第2-3集主角正面出手赢冲突（隐性金手指的"无意识出手"除外）
 `;
 
 // ====================== 【S级核心爽点库】======================
@@ -225,7 +568,7 @@ const GLOBAL_TOP_RULES = `
 
 ### 最高顶层原则
 所有规则为剧情自然度服务。规则与流畅性冲突时优先保证剧情通顺。
-核心规则（信息差、旁观者烘托、每集留钩子、冲突梯度）必须达标，细节形式灵活调整。
+核心规则（信息差、旁观者烘托、每集留钩子、冲突梯度、爽感曲线、逐集引擎）必须达标，细节形式灵活调整。
 禁止为了卡规则硬塞内容。
 
 ### ⚠️ 格式最高规则（违反直接重写）
@@ -255,8 +598,13 @@ const GLOBAL_TOP_RULES = `
      ✅ "一个废掉的残兵，右眼都看不清"
      ❌ "他不行"
 
+   ⚠️ 信息差必须贯穿10集始终：
+   每一集结束时自检："此刻观众知道但剧内角色不知道的信息是什么？"
+   如果答案是"没有" → 这一集缺乏信息差，需要补。
+
 2. 【透底规则】
    第1集按开场策略完成透底（查策略表）。
+   ⚠️ 透底必须通过三要素检验（独占性+具体性+可期待性），缺一不可。
    透底后全程隐身不再重复。
 
 3. 【金手指规则】
@@ -268,6 +616,7 @@ const GLOBAL_TOP_RULES = `
 5. 【钩子规则】
    每集结尾在最刺激瞬间戛然而止，直接△黑幕。
    终极钩子必须是明确的二元悬念，第1集就让观众知道"追下去能看到什么"。
+   ⚠️ 每集结尾钩子类型不能与相邻集重复。
 
 6. 【冲突梯度规则】
    反派手段升级梯度：
@@ -282,23 +631,33 @@ const GLOBAL_TOP_RULES = `
    - 主角必须有2-3个专属标志性动作/口头禅
    - ⚠️ 频率限制：动作每集最多1次，口头禅全阶段最多3次
    - 台词口语化短句有个性，禁止书面语
-   - ⚠️ 主角前3集必须至少有3句展示个性的台词（痞/嘴欠/淡定/搞笑均可）
+   - ⚠️ 主角前3集必须至少有3句展示个性的台词
    - 通过具体行为表现性格，禁止旁白/OS描述
    - 反派有明确利益动机
+   - ⚠️ 嘲讽者必须有名有姓有标志性台词，打脸时回扣原话
 
 8. 【爽感优先魔改规则】
    无需贴合原著，可自由魔改，保留核心人设和核心钩子即可。
-   ⚠️ 魔改核心原则：让每一集都有画面冲击力、让主角有性格魅力、让观众划不走。
 
-9. 【阶段爽梗闭环·10集制】
-   单阶段10集：
-   铺垫期（1-2集）→ 冲突升级期（3-5集）→ 小高潮（第6集）→ 大爽点爆发（7-8集）→ 转场期（9-10集）
+9. 【爽感曲线规则·10集制】
+   强制执行爽感曲线：
+   第1集★★★ → 第2集★★ → 第3集★★ → 第4集★ → 第5集☆ → 第6集★★★ → 第7集★★★★ → 第8集★★★★★ → 第9集★★ → 第10集★★★
+   第5集必须是最低谷，第8集必须是最高潮。
 
-10. 【伏笔闭环】所有伏笔本阶段回收。
+10. 【主角出手硬控制·10集制】
+    第1集1次（炸场/过去式）→ 第2-5集0次 → 第6集1次 → 第7集1-2次 → 第8集不限 → 第9-10集0-1次
 
-11. 【打脸闭环】每个嘲讽者必须有打脸回报。
+11. 【暗线必须从第4集开始埋、第7集引爆】
+    第4集：主角在"输"的同时悄悄做了一件事
+    第5集：暗线微小进展
+    第6集：用到暗线一部分
+    第7集：暗线全面引爆
 
-12. 【禁止同质化重复】
+12. 【伏笔闭环】所有伏笔本阶段回收。
+
+13. 【打脸闭环】每个嘲讽者必须有打脸回报，打脸时回扣具体嘲讽台词。
+
+14. 【禁止同质化重复】
     禁止连续2集相同冲突/相同手段/每集必须有新信息。
 `;
 
@@ -352,7 +711,7 @@ const ANTI_BUG_RULES = `
 3. 伏笔本阶段回收
 4. 正面配角立场转变至少2次暗中维护铺垫
 5. 反派密谋私下进行
-6. 打脸闭环：所有嘲讽者有打脸回报
+6. 打脸闭环：所有嘲讽者有打脸回报，打脸时必须回扣嘲讽者原话
 7. 禁止连续2集相同冲突/手段
 8. 每集必须有新信息/新冲突/新人物
 9. 标志性动作每集最多1次，口头禅全阶段最多3次
@@ -360,6 +719,13 @@ const ANTI_BUG_RULES = `
 11. ⚠️ 禁止前3集主角全程沉默被动（必须至少3句个性台词）
 12. ⚠️ 策略A（先炸后藏）：第1集必须有主角亲自上场的劲爆画面，不可用配角转述替代
 13. 禁止违反公序良俗内容
+14. ⚠️ 透底必须通过三要素检验（独占性+具体性+可期待性），缺一不可
+15. ⚠️ 主角出手硬控制：第2-5集禁止出手，第6集只许出手1次，第8集全面碾压
+16. ⚠️ 暗线必须从第4集埋设、第7集引爆，第7集反转必须有第4-5集的具体伏笔支撑
+17. ⚠️ 每集结尾钩子类型不能与相邻集重复
+18. ⚠️ 嘲讽者必须有名有姓有标志性台词，禁止泛泛的"众人纷纷嘲笑"
+19. ⚠️ 爽感曲线硬性约束：第5集必须是最低谷（☆），第8集必须是最高潮（★★★★★）
+20. ⚠️ 第8集打脸必须精确回扣前面集数嘲讽者的原话
 `;
 
 // ====================== 【工具函数】======================
@@ -431,8 +797,10 @@ async function callLLM(prompt: string, needJson: boolean = true, retries: number
           .replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
           .replace(/\n/g, ' ').replace(/\t/g, ' ').replace(/\r/g, '')
           .replace(/,\s*([\]}])/g, '$1');
+        await delay(API_CALL_DELAY);  // ← 【补丁1】节流延迟
         return JSON.parse(jsonStr);
       }
+      await delay(API_CALL_DELAY);  // ← 【补丁1】节流延迟
       return content;
     } catch (error: any) {
       if (error.message?.includes('API_KEY') || error.message?.includes('模型未找到')) throw error;
@@ -443,6 +811,7 @@ async function callLLM(prompt: string, needJson: boolean = true, retries: number
       await delay(backoffMs);
     }
   }
+  throw new Error('LLM调用失败：已耗尽所有重试次数');
 }
 
 // ====================== 【爽点类型匹配工具】======================
@@ -464,537 +833,626 @@ function matchShuangdianType(coreShuangdian: string): string {
   for (const [type, keywords] of Object.entries(typeMap)) {
     if (keywords.some(kw => coreShuangdian.includes(kw))) return type;
   }
-  return '';
+  return '装逼打脸类';
 }
 
-// ====================== 【GeminiService 核心类】======================
-export class GeminiService {
+// ====================== 【金手指感知维度匹配工具】======================
+function matchGoldFingerPerception(coreShuangdian: string): { perception: string; strategy: string } {
+  const perceptionMap: Record<string, { keywords: string[]; perception: string; strategy: string }[]> = {
+    '显性-隐忍': [
+      { keywords: ['扮猪吃虎', '实力碾压', '幕后大佬', '挥金如土', '万千宠爱', '一呼百应', '收服帮派', '力挽狂澜', '英雄救美', '拯救公司', '解救家人', '劫富济贫'], perception: '显性-隐忍', strategy: 'A' },
+      { keywords: ['预判对手', '渔翁得利', '职场宫斗', '大仇得报', '诛杀坏人', '反向PUA', '信息差赚钱', '薅集体羊毛', '打脸极品亲戚', '返城创业', '囤货致富'], perception: '显性-隐忍', strategy: 'D' },
+    ],
+    '隐性': [
+      { keywords: ['天赋异禀', '不按常理', '无心插柳', '一夜暴富', '因祸得福'], perception: '隐性', strategy: 'B' },
+    ],
+    '显性-系统': [
+      { keywords: ['直播打脸', '弹幕封神', '反向带货', '花式怼粉', '黑料澄清', '破解规则', '戏耍NPC', '极限逃生', '副本通关', '卡bug刷分'], perception: '显性-系统', strategy: 'C' },
+    ],
+    '半显性': [
+      { keywords: ['开卦算命', '风水改运', '驱邪破煞', '功德加身', '预知吉凶', '慧眼识珠', '偷听秘闻'], perception: '半显性', strategy: 'B' },
+    ],
+  };
 
-  // ==================== 自检 ====================
-  private async ruleCheck(
-    content: string,
-    checkType: 'skeleton' | 'outline' | 'script',
-    episodeNum?: number
-  ): Promise<{ pass: boolean, error?: string }> {
-    let checkPrompt = '';
-
-    if (checkType === 'skeleton') {
-      checkPrompt = `检查骨架，输出JSON{"pass":true/false,"error":"原因或无"}：
-      1. 底牌是否具体可量化？
-      2. 金手指与爽梗匹配？
-      3. 感知维度和透底形式一致？
-      4. 开场策略正确（显性-隐忍用策略A/隐性用策略B/系统用策略C/重生用策略D）？
-      5. episode_1_opening_scene是主角亲自上场的画面（非配角念简历）？
-      6. protagonist_voice有3句个性台词示例？
-      7. 冲突5层梯度？
-      8. 打脸闭环？
-      9. 10集制？
-      内容：${content.slice(0, 6000)}`;
-    } else if (checkType === 'outline') {
-      checkPrompt = `检查大纲，输出JSON{"pass":true/false,"error":"原因或无"}：
-      1. 共10集？
-      2. 每集有钩子？
-      3. 冲突有梯度？
-      4. 第1集按开场策略执行（策略A先有主角劲爆画面/策略B日常暴露+知情人透底）？
-      5. 连续2集无相同冲突？
-      6. 打脸闭环？
-      内容：${content.slice(0, 6000)}`;
-    } else if (checkType === 'script' && episodeNum !== undefined) {
-      checkPrompt = `检查第${episodeNum}集脚本，输出JSON{"pass":true/false,"error":"原因或无"}：
-      1. 格式标准（△动作+角色名：台词）？
-      2. 结尾△黑幕？
-      3. 台词口语化有个性？
-      ${episodeNum === 1 ? `4. 是否按开场策略执行？策略A：是否有主角亲自上场的劲爆画面（配角念简历不算）？策略B：是否有主角做日常+逆天之事+知情人量化反应？
-      5. 主角是否有个性台词（不是全程沉默）？` : ''}
-      ${episodeNum <= 3 ? `6. 旁观者？7. 主角个性台词？` : ''}
-      ${episodeNum >= 7 && episodeNum <= 8 ? `8. 大爽点干脆利落？打脸闭环？旁观者分层？` : ''}
-      内容：${content.slice(0, 6000)}`;
-    } else {
-      return { pass: true };
-    }
-
-    try {
-      return await callLLM(checkPrompt, true, 1);
-    } catch {
-      return { pass: true };
+  for (const entries of Object.values(perceptionMap)) {
+    for (const entry of entries) {
+      if (entry.keywords.some(kw => coreShuangdian.includes(kw))) {
+        return { perception: entry.perception, strategy: entry.strategy };
+      }
     }
   }
+  return { perception: '显性-隐忍', strategy: 'A' };
+}
 
-  // ==================== 第一阶段：骨架分析 ====================
-  async analyzeNovel(novelContent: string): Promise<string> {
-    const prompt = `
-    ${GLOBAL_TOP_RULES}
-    ${SHUANGDIAN_LIBRARY}
-    ${GOLD_FINGER_FRAMEWORK}
-    ${SUB_GENRE_RULES}
-    ${EPISODE_1_STRATEGIES}
+// ====================== 【步骤1：基础设定生成】======================
+async function step1_generateBasicSettings(userInput: string): Promise<any> {
+  console.log('\n📝 步骤1：生成基础设定...');
 
-    【任务】
-    基于小说内容：
-    1. 提炼核心卖点和爽梗
-    2. 查金手指匹配表确定全套参数
-    3. 根据金手指感知维度查第1集开场策略表，确定用策略A/B/C/D
-    4. 基于联合决策规划10集阶段剧情
-    可自由魔改，爽感优先。
+  const prompt = `
+你是短剧编剧AI。根据用户输入，生成短剧基础设定。
 
-    【输出JSON】
+${SHUANGDIAN_LIBRARY}
+
+${SUB_GENRE_RULES}
+
+${GOLD_FINGER_FRAMEWORK}
+
+${EPISODE_1_STRATEGIES}
+
+用户输入：${userInput}
+
+请输出JSON，包含以下字段：
+{
+  "title": "短剧标题",
+  "genre": "子流派（从子流派规则表中选一个）",
+  "target_audience": "目标受众（性别+年龄+核心诉求）",
+  "core_shuangdian": "核心爽梗（从S级爽点库中选1个最核心的）",
+  "auxiliary_shuangdian": ["辅助爽梗1", "辅助爽梗2"],
+  "shuangdian_type": "爽梗大类（装逼打脸类/荣获至宝类等）",
+  "gold_finger": {
+    "type": "金手指类型（如：内生·天赋流 / 身份·实力流 / 外挂·系统流 / 重生·先知流等，从匹配表查）",
+    "perception": "感知维度（隐性 / 显性-隐忍 / 显性-系统 / 半显性，从匹配表查）",
+    "form": "存在形式（内生型 / 外挂型）",
+    "action": "作用方式（主动型 / 被动型）",
+    "quantified_description": "量化描述（必须是具体可量化的碾压级优势，禁止模糊表述）",
+    "reveal_method": "透底形式（从优先级列表选，必须匹配感知维度）",
+    "hide_reason": "隐忍理由（显性-隐忍型必填，隐性型填'不适用-主角不自知'）"
+  },
+  "episode_1_strategy": "第1集开场策略（A/B/C/D，从匹配表查）",
+  "protagonist": {
+    "name": "主角姓名",
+    "gender": "性别",
+    "age": "年龄",
+    "surface_identity": "表面身份（所有人以为他/她是什么）",
+    "true_identity": "真实底牌（只有观众知道）",
+    "personality_tags": ["性格标签1", "性格标签2", "性格标签3"],
+    "signature_actions": ["标志性动作1", "标志性动作2"],
+    "catchphrase": "口头禅（1句，有个性）",
+    "bottom_line": "主角底线（碰了就会爆发的事情）"
+  },
+  "female_lead": {
+    "name": "女主姓名",
+    "relationship": "与主角关系",
+    "personality": "性格特点",
+    "role_in_plot": "在剧情中的功能（情感锚点/助攻/见证者等）"
+  },
+  "main_villain": {
+    "name": "主反派姓名",
+    "relationship": "与主角关系",
+    "motivation": "具体利益动机",
+    "escalation_path": "手段升级路径（从嘲讽→经济→人身→核心关系人）"
+  },
+  "mockers": [
     {
-        "base_info": {
-            "book_name": "书名",
-            "core_genre": "男频/女频",
-            "sub_genre": "子流派/最多3个",
-            "protagonist": "主角姓名+身份+核心性格+2-3个专属标志性动作或口头禅（含频率限制）+碾压级底牌（量化）",
-            "protagonist_voice": "主角说话风格示例（3句示例台词，体现个性）",
-            "gold_finger": {
-                "content": "具体内容和量化能力",
-                "type": "查表结果",
-                "perception": "隐性/显性-隐忍/显性-系统/半显性",
-                "reveal_method": "透底形式",
-                "reveal_scene": "第1集透底具体场景",
-                "supporting_character": "知情配角设定或不适用",
-                "conceal_reason": "隐忍理由或不适用-天然信息差",
-                "boundary": "使用边界"
-            },
-            "episode_1_strategy": "A先炸后藏 / B日常暴露 / C系统激活 / D重生闪回",
-            "episode_1_opening_scene": "第1集开场劲爆画面具体描述（2-3句话，主角亲自上场的可拍画面）",
-            "final_boss": "终极BOSS",
-            "final_goal": "主角终极目标"
-        },
-        "ultimate_hook": {
-            "content": "终极二元悬念",
-            "strengthen_nodes": ["每10集强化"]
-        },
-        "conflict_ladder": {
-            "level_1": "口头嘲讽/社交羞辱（1-2集）",
-            "level_2": "经济打压/断生路（3集）",
-            "level_3": "人身威胁/派打手（4集）",
-            "level_4": "威胁核心关系人（5-6集）",
-            "level_5": "动用权力/国际势力（7-8集触发爆发）"
-        },
-        "face_slap_map": [
-            {"who_mocked": "谁嘲讽", "mock_episode": "第几集", "payback_episode": "第几集打脸", "payback_method": "怎么打脸"}
-        ],
-        "stage_shuangdian_plan": [
-            {
-                "stage_num": 1,
-                "stage_total_episodes": 10,
-                "core_shuangdian": "从爽点库选",
-                "stage_hook": "阶段二元悬念",
-                "bind_global_hook": "与全局钩子关联",
-                "full_link_nodes": {
-                    "铺垫期": { "episode_range": "1-2集", "core_task": "第1集按策略X执行开场；第2集..." },
-                    "冲突升级期": { "episode_range": "3-5集", "core_task": "每集不同层级冲突" },
-                    "small_climax": { "episode_range": "第6集", "core_task": "..." },
-                    "big_explosion": { "episode_range": "7-8集", "core_task": "..." },
-                    "transition_period": { "episode_range": "9-10集", "core_task": "..." }
-                },
-                "forbidden_elements": ["禁入内容"],
-                "gold_finger_boundary": "本阶段金手指边界"
-            }
-        ],
-        "sub_genre_rules": "对应子流派规则"
-    }
-
-    【校验】
-    1. 底牌量化可衡量
-    2. 金手指与爽梗匹配
-    3. 开场策略与感知维度匹配
-    4. episode_1_opening_scene是主角亲自上场画面
-    5. protagonist_voice有3句个性台词
-    6. 冲突5层梯度
-    7. 打脸闭环
-    8. 10集制
-
-    【输入小说】：
-    ${novelContent.slice(0, 10000)}
-    `;
-
-    let result = await callLLM(prompt, true);
-    if (ENABLE_RULE_CHECK) {
-      await delay(API_CALL_DELAY);
-      const checkRes = await this.ruleCheck(JSON.stringify(result), 'skeleton');
-      if (!checkRes.pass && checkRes.error) {
-        console.warn('骨架校验失败：', checkRes.error);
-        await delay(API_CALL_DELAY);
-        result = await callLLM(prompt + `\n\n校验失败：${checkRes.error}，请修正`, true);
-      }
-    }
-    return this.formatAnalysisReport(result);
-  }
-
-  // ==================== 格式化报告 ====================
-  private formatAnalysisReport(skeleton: any): string {
-    const info = skeleton.base_info;
-    const hook = skeleton.ultimate_hook;
-    const gf = info.gold_finger;
-
-    let report = `📖 书名：${info.book_name}\n`;
-    report += `📂 流派：${info.core_genre} / ${info.sub_genre}\n`;
-    report += `👤 主角：${info.protagonist}\n`;
-    report += `🗣️ 说话风格：${info.protagonist_voice}\n\n`;
-    report += `🔧 金手指：\n`;
-    report += `  内容：${gf.content}\n`;
-    report += `  类型：${gf.type}\n`;
-    report += `  感知维度：${gf.perception}\n`;
-    report += `  透底形式：${gf.reveal_method}\n`;
-    report += `  透底场景：${gf.reveal_scene}\n`;
-    report += `  知情配角：${gf.supporting_character}\n`;
-    report += `  隐忍理由：${gf.conceal_reason}\n\n`;
-    report += `🎬 开场策略：${info.episode_1_strategy}\n`;
-    report += `🎬 开场画面：${info.episode_1_opening_scene}\n\n`;
-    report += `👿 终极BOSS：${info.final_boss}\n`;
-    report += `🎯 终极目标：${info.final_goal}\n\n`;
-    report += `🪝 终极钩子：${hook.content}\n`;
-    report += `📍 强化节点：${hook.strengthen_nodes.join('、')}\n\n`;
-
-    if (skeleton.conflict_ladder) {
-      report += `⚔️ 冲突梯度：\n`;
-      Object.entries(skeleton.conflict_ladder).forEach(([k, v]) => {
-        report += `  ${k}：${v}\n`;
-      });
-      report += `\n`;
-    }
-
-    if (skeleton.face_slap_map) {
-      report += `👊 打脸闭环：\n`;
-      skeleton.face_slap_map.forEach((item: any) => {
-        report += `  ${item.who_mocked}（第${item.mock_episode}集）→ 第${item.payback_episode}集：${item.payback_method}\n`;
-      });
-      report += `\n`;
-    }
-
-    report += `⚡ 阶段规划：\n`;
-    skeleton.stage_shuangdian_plan.forEach((stage: any) => {
-      report += `\n  📌 第${stage.stage_num}阶段（${stage.stage_total_episodes}集）：${stage.core_shuangdian}\n`;
-      report += `  🪝 阶段钩子：${stage.stage_hook}\n`;
-      report += `  🔗 绑定主线：${stage.bind_global_hook}\n`;
-      const nodes = stage.full_link_nodes;
-      report += `  📅 链路：\n`;
-      report += `    ① 铺垫 ${nodes['铺垫期'].episode_range}：${nodes['铺垫期'].core_task}\n`;
-      report += `    ② 升级 ${nodes['冲突升级期'].episode_range}：${nodes['冲突升级期'].core_task}\n`;
-      report += `    ③ 小高潮 ${nodes.small_climax.episode_range}：${nodes.small_climax.core_task}\n`;
-      report += `    ④ 大爽点 ${nodes.big_explosion.episode_range}：${nodes.big_explosion.core_task}\n`;
-      report += `    ⑤ 转场 ${nodes.transition_period.episode_range}：${nodes.transition_period.core_task}\n`;
-      report += `  ⚠️ 禁入：${stage.forbidden_elements.join('、')}\n`;
-    });
-
-    report += `\n🎭 子流派：${skeleton.sub_genre_rules}\n`;
-    report += `\n\n<!--SKELETON_JSON_START-->${JSON.stringify(skeleton)}<!--SKELETON_JSON_END-->`;
-    return report;
-  }
-
-  // ==================== 提取骨架JSON ====================
-  private extractSkeleton(analysisReport: string): any {
-    const match = analysisReport.match(/<!--SKELETON_JSON_START-->(.+?)<!--SKELETON_JSON_END-->/);
-    if (match) return JSON.parse(match[1]);
-    throw new Error('无法提取骨架数据');
-  }
-
-  // ==================== 第二阶段：分集大纲 ====================
-  async generateOutline(novelContent: string, analysisReport: string, targetStageNum: number = 1): Promise<string> {
-    const skeleton = this.extractSkeleton(analysisReport);
-    const targetStage = skeleton.stage_shuangdian_plan.find((s: any) => s.stage_num === targetStageNum);
-    if (!targetStage) throw new Error(`未找到第${targetStageNum}阶段`);
-
-    const gf = skeleton.base_info.gold_finger;
-    const strategy = skeleton.base_info.episode_1_strategy;
-
-    const prompt = `
-    ${GLOBAL_TOP_RULES}
-    ${FIRST_3_EPISODES_RULES}
-    ${SHUANGDIAN_EXEC_RULES}
-    ${ANTI_BUG_RULES}
-    子流派规则：${skeleton.sub_genre_rules}
-
-    【基础信息】
-    终极钩子：${skeleton.ultimate_hook.content}
-    当前阶段第${targetStageNum}阶段，共${targetStage.stage_total_episodes}集
-    核心爽梗：${targetStage.core_shuangdian}
-    阶段钩子：${targetStage.stage_hook}
-    链路节点：${JSON.stringify(targetStage.full_link_nodes)}
-    禁入：${targetStage.forbidden_elements.join('、')}
-    主角：${skeleton.base_info.protagonist}
-    主角说话风格：${skeleton.base_info.protagonist_voice}
-    冲突梯度：${JSON.stringify(skeleton.conflict_ladder)}
-    打脸闭环：${JSON.stringify(skeleton.face_slap_map)}
-
-    【金手指】
-    内容：${gf.content}
-    感知维度：${gf.perception}
-    透底形式：${gf.reveal_method}
-    第1集透底场景：${gf.reveal_scene}
-    知情配角：${gf.supporting_character}
-    隐忍理由：${gf.conceal_reason}
-
-    【第1集开场策略：${strategy}】
-    开场画面：${skeleton.base_info.episode_1_opening_scene}
-    ⚠️ 第1集大纲必须包含这个开场画面
-
-    【任务】
-    严格按链路节点生成10集大纲。
-    第1集必须按开场策略执行。
-    冲突逐集升级，禁止连续2集相同冲突。
-    打脸闭环。
-
-    【输出JSON】
+      "name": "嘲讽者1姓名",
+      "identity": "身份",
+      "signature_taunt": "标志性嘲讽台词（具体、刺痛、有记忆点）",
+      "face_slap_episode": "被打脸的集数",
+      "face_slap_method": "打脸方式（必须回扣嘲讽原话）"
+    },
     {
-        "unit_base_info": {
-            "unit_num": ${targetStageNum},
-            "episode_range": "1-10集",
-            "stage_goal": "...",
-            "stage_hook": "...",
-            "core_shuangdian": "...",
-            "core_villain": "...",
-            "bystanders": ["...", "...", "..."]
-        },
-        "episode_outlines": [
-            {
-                "episode_num": 1,
-                "conflict_level": "冲突层级",
-                "core_plot": "30字概括",
-                "key_scenes": "2-3个关键场景",
-                "new_info": "区别于上集的新信息",
-                "single_hook": "结尾钩子",
-                "node_belong": "铺垫期/冲突升级期/小高潮/大爽点/转场期",
-                "face_slap": "打脸安排/无",
-                "foreshadow": "伏笔/无",
-                "foreshadow_payoff": "回收集数/无"
-            }
-        ]
+      "name": "嘲讽者2姓名",
+      "identity": "身份",
+      "signature_taunt": "标志性嘲讽台词",
+      "face_slap_episode": "被打脸的集数",
+      "face_slap_method": "打脸方式"
     }
+  ],
+  "ultimate_hook": "终极钩子（明确的二元悬念，观众追到底要看什么）",
+  "setting_summary": "一句话概括设定（XX身份的主角，在XX环境下，用XX底牌，实现XX目标）"
+}
 
-    【校验】
-    1. 共10集
-    2. 每集conflict_level不同于上一集
-    3. 每集new_info非空
-    4. 打脸闭环
-    5. 第1集有开场画面+终极钩子
-    6. 转场期新矛盾有伏笔支撑
-    `;
-
-    let outlineData = await callLLM(prompt, true);
-    if (ENABLE_RULE_CHECK) {
-      await delay(API_CALL_DELAY);
-      const checkRes = await this.ruleCheck(JSON.stringify(outlineData), 'outline');
-      if (!checkRes.pass && checkRes.error) {
-        console.warn('大纲校验失败：', checkRes.error);
-        await delay(API_CALL_DELAY);
-        outlineData = await callLLM(prompt + `\n\n校验失败：${checkRes.error}，请修正`, true);
-      }
-    }
-    let text = this.formatOutline(outlineData);
-    text += `\n\n<!--OUTLINE_JSON_START-->${JSON.stringify({ outline: outlineData, skeleton, targetStage })}<!--OUTLINE_JSON_END-->`;
-    return text;
-  }
-
-  // ==================== 格式化大纲 ====================
-  private formatOutline(outline: any): string {
-    const info = outline.unit_base_info;
-    let text = `📋 大纲：${info.episode_range}\n`;
-    text += `🎯 目标：${info.stage_goal}\n`;
-    text += `🪝 悬念：${info.stage_hook}\n`;
-    text += `⚡ 爽点：${info.core_shuangdian}\n`;
-    text += `👿 反派：${info.core_villain}\n`;
-    text += `👥 旁观者：${info.bystanders.join(' / ')}\n\n`;
-    text += `--- 分集大纲 ---\n\n`;
-
-    outline.episode_outlines.forEach((ep: any) => {
-      text += `【第${ep.episode_num}集】[${ep.node_belong}] ${ep.core_plot}\n`;
-      text += `  冲突层级：${ep.conflict_level}\n`;
-      text += `  关键场景：${ep.key_scenes}\n`;
-      text += `  新信息：${ep.new_info}\n`;
-      text += `  钩子：${ep.single_hook}\n`;
-      if (ep.face_slap && ep.face_slap !== '无') text += `  打脸：${ep.face_slap}\n`;
-      if (ep.foreshadow && ep.foreshadow !== '无') text += `  伏笔：${ep.foreshadow} → 第${ep.foreshadow_payoff}集回收\n`;
-      text += `\n`;
-    });
-    return text;
-  }
-
-  // ==================== 第三阶段：生成脚本 ====================
-  async generateScripts(
-    outlineText: string,
-    phase: number,
-    novelContent: string,
-    formattingRef?: string,
-    onProgress?: (current: number, total: number, status: string) => void
-  ): Promise<string> {
-    const match = outlineText.match(/<!--OUTLINE_JSON_START-->(.+?)<!--OUTLINE_JSON_END-->/);
-    if (!match) throw new Error('无法从大纲中提取数据');
-
-    const { outline, skeleton, targetStage } = JSON.parse(match[1]);
-    const coreShuangdian = outline.unit_base_info.core_shuangdian;
-    const shuangdianType = matchShuangdianType(coreShuangdian);
-    const gf = skeleton.base_info.gold_finger;
-    const strategy = skeleton.base_info.episode_1_strategy;
-
-    const allScripts: string[] = [];
-    const totalEpisodes = outline.episode_outlines.length;
-    let previousSummary = '';
-
-    for (let i = 0; i < totalEpisodes; i++) {
-      const episode = outline.episode_outlines[i];
-      if (onProgress) onProgress(i + 1, totalEpisodes, `正在生成第${episode.episode_num}集...`);
-      if (i > 0) await delay(API_CALL_DELAY);
-
-      // 动态生成金手指+开场指令
-      let goldFingerDirective = '';
-      let openingDirective = '';
-
-      if (episode.episode_num === 1) {
-        if (strategy.includes('A') || strategy.includes('先炸后藏')) {
-          openingDirective = `
-【第1集开场指令·策略A先炸后藏】
-⚠️ 这是本集最重要的规则：
-
-场景1（前30秒·炸场）：
-- 直接给主角最强状态的劲爆动作画面：${skeleton.base_info.episode_1_opening_scene}
-- 主角必须亲自上场，有具体动作（开枪/格斗/碾压），不可用配角念简历替代
-- 画面有视觉冲击力
-- 配角反应或字幕量化碾压级别（${gf.content}）
-- 主角在这个场景中要说至少1句有个性的台词
-
-场景2（藏的理由·不超过4行）：
-- 简短交代退隐原因（${gf.conceal_reason}）
-
-场景3（反差登场）：
-- 时间跳转，主角以最普通的样子出现在日常场景
-- 遭遇第一个冲突点，被人当废物
-- 主角态度有个性（痞/嘴欠/不在乎），不能全程沉默
-
-⚠️ 绝对禁止：
-- 禁止开场是将军站地图前+警卫员念档案
-- 禁止主角第1集全程不说话
-- 禁止炸场画面只有回忆闪回`;
-
-          goldFingerDirective = `
-【金手指·显性-隐忍型·第1集】
-隐忍理由：${gf.conceal_reason}
-炸场画面是真实样子，反差画面是伪装。
-面对刺激有1个微小专属微反应。`;
-
-        } else if (strategy.includes('B') || strategy.includes('日常暴露')) {
-          openingDirective = `
-【第1集开场指令·策略B日常暴露】
-场景1：主角做日常事，过程中无意做逆天之事（${skeleton.base_info.episode_1_opening_scene}）
-知情配角（${gf.supporting_character}）OS量化碾压级别
-主角完全不知道自己有多强`;
-
-          goldFingerDirective = `
-【金手指·隐性型·第1集】主角100%不自知。`;
-
-        } else if (strategy.includes('C') || strategy.includes('系统')) {
-          openingDirective = `【第1集开场指令·策略C系统激活】系统弹窗出现1次。`;
-          goldFingerDirective = `【金手指·系统型·第1集】仅此1次系统出现。`;
-        } else if (strategy.includes('D') || strategy.includes('重生')) {
-          openingDirective = `【第1集开场指令·策略D重生闪回】前世惨死3-5秒 → 睁眼回到过去 → 立刻做只有重生者才会做的事。`;
-          goldFingerDirective = `【金手指·先知型·第1集】主角OS+行为反差透底。`;
-        }
-      } else {
-        openingDirective = '';
-        if (gf.perception === '隐性') {
-          goldFingerDirective = `【金手指·隐性】主角不自知。爽感来自无意间逆天+旁人震惊。`;
-        } else if (gf.perception?.includes('隐忍')) {
-          goldFingerDirective = `【金手指·隐忍】隐忍不发，微反应本集最多1次。`;
-        } else if (gf.perception?.includes('系统')) {
-          goldFingerDirective = `【金手指·系统】系统全程隐身。`;
-        } else {
-          goldFingerDirective = `【金手指】不再透底。`;
-        }
-      }
-
-      let faceSlipReminder = '';
-      if (episode.face_slap && episode.face_slap !== '无') {
-        faceSlipReminder = `\n【打脸提醒】${episode.face_slap}`;
-      }
-
-      const prompt = `
-【⚠️ 最高优先级·格式规则】
-标准竖屏短剧格式，范本：
-${SCRIPT_FORMAT_EXAMPLE}
-
-【绝对禁止】
-❌ ### 第X集 / 【场景】【画面】【台词】分块 / 自创标签 / 下集预告
-
-【必须使用】
-✅ 场景头+△动作+角色名：台词+OS+（字幕：XXX）+△黑幕
-
-${openingDirective}
-${goldFingerDirective}
-${faceSlipReminder}
-
-【创作信息】
-终极钩子：${skeleton.ultimate_hook.content}
-核心爽点：${coreShuangdian}（${shuangdianType}）
-主角：${skeleton.base_info.protagonist}
-主角说话风格（模仿写台词）：${skeleton.base_info.protagonist_voice}
-金手指：${gf.content}（${gf.perception}）
-旁观者：${outline.unit_base_info.bystanders.join(' / ')}
-冲突梯度：${JSON.stringify(skeleton.conflict_ladder)}
-${previousSummary ? `\n【前文摘要】\n${previousSummary}` : ''}
-
-【核心要求】
-1. 500-700字，节奏快冲突强爽感足
-2. 台词口语化短句，模仿主角说话风格
-3. 主角本集至少2句个性台词
-4. 信息差通过行为+配角反应自然呈现
-5. 结尾最刺激瞬间△黑幕
-6. 冲突场景2-3类旁观者
-7. 冲突层级：${episode.conflict_level}
-8. 新信息：${episode.new_info}
-
-${episode.episode_num <= 3 ? `
-【前三集专项·第${episode.episode_num}集】
-${episode.episode_num === 1 ? `⚠️ 必须严格按上面的开场指令执行` : ''}
-${episode.episode_num === 2 ? `- 反差全面铺开，主角以普通人身份遭遇嘲讽
-- 三类旁观者全部到位
-- 主角不经意小动作暗示实力
-- 不释放爽点，反差持续拉大` : ''}
-${episode.episode_num === 3 ? `- 冲突升级到新层级，不重复第2集
-- 反派动用资源打压
-- 主角有"差点暴露"瞬间但掩饰过去
-- 结尾在更大威胁出现时戛然而止` : ''}
-` : ''}
-
-${episode.episode_num >= 7 && episode.episode_num <= 8 ? `
-【大爽点·第${episode.episode_num}集】
-- 爆发干脆利落
-- 旁观者分层反应
-- 打脸闭环
-- ${episode.episode_num === 7 ? '爽点释放一半，最大的留第8集' : '最大爽点全部释放'}
-` : ''}
-
-【本集大纲】
-${JSON.stringify(episode)}
-
-${ANTI_BUG_RULES}
+严格按金手指匹配表选择对应参数，不可乱配。
+量化描述必须具体到数字/级别/对比物，禁止"很强""非常厉害"等模糊表述。
+嘲讽者至少2个，有名有姓有标志性台词。
 `;
 
-      let script = await callLLM(prompt, false);
+  const result = await callLLM(prompt);
+  // 自动校正爽点类型和金手指匹配
+  result.shuangdian_type = matchShuangdianType(result.core_shuangdian);
+  const gfMatch = matchGoldFingerPerception(result.core_shuangdian);
+  result.gold_finger.perception = gfMatch.perception;
+  result.episode_1_strategy = gfMatch.strategy;
 
-      const isCritical = episode.episode_num <= 3 || (episode.episode_num >= 7 && episode.episode_num <= 8);
-      if (ENABLE_RULE_CHECK && isCritical) {
-        if (onProgress) onProgress(i + 1, totalEpisodes, `校验第${episode.episode_num}集...`);
-        await delay(API_CALL_DELAY);
-        const checkRes = await this.ruleCheck(script, 'script', episode.episode_num);
-        if (!checkRes.pass && checkRes.error) {
-          console.warn(`第${episode.episode_num}集校验失败：`, checkRes.error);
-          if (onProgress) onProgress(i + 1, totalEpisodes, `第${episode.episode_num}集重生成...`);
-          await delay(API_CALL_DELAY);
-          script = await callLLM(prompt + `\n\n校验失败：${checkRes.error}，请修正后重写`, false);
-        }
+  console.log(`✅ 基础设定完成：${result.title}`);
+  console.log(`   子流派：${result.genre} | 核心爽梗：${result.core_shuangdian} | 金手指：${result.gold_finger.type}(${result.gold_finger.perception})`);
+  console.log(`   开场策略：${result.episode_1_strategy} | 终极钩子：${result.ultimate_hook}`);
+  console.log(`   嘲讽者：${result.mockers.map((m: any) => m.name).join('、')}`);
+
+  return result;
+}
+
+// ====================== 【步骤2：10集大纲生成】======================
+async function step2_generateOutline(settings: any): Promise<any> {
+  console.log('\n📝 步骤2：生成10集大纲...');
+
+  const prompt = `
+你是短剧编剧AI。根据基础设定，生成10集大纲。
+
+${GLOBAL_TOP_RULES}
+
+${SHUANG_CURVE_RULES}
+
+${PER_EPISODE_ENGINE}
+
+${EPISODE_1_STRATEGIES}
+
+${FIRST_3_EPISODES_RULES}
+
+${SHUANGDIAN_EXEC_RULES}
+
+基础设定：
+${JSON.stringify(settings, null, 2)}
+
+请严格按以下规则生成10集大纲：
+
+1. 爽感曲线硬性约束：
+   第1集★★★ → 第2集★★ → 第3集★★ → 第4集★ → 第5集☆ → 第6集★★★ → 第7集★★★★ → 第8集★★★★★ → 第9集★★ → 第10集★★★
+
+2. 主角出手硬控制：
+   第1集1次（炸场/过去式）→ 第2-5集0次 → 第6集1次 → 第7集1-2次 → 第8集不限 → 第9-10集0-1次
+
+3. 暗线规则：第4集埋暗线 → 第5集微进展 → 第6集用一部分 → 第7集全面引爆
+
+4. 冲突梯度：①口头嘲讽 → ②经济打压 → ③人身威胁 → ④威胁核心关系人 → ⑤动用权力
+
+5. 每集结尾钩子类型不重复（查钩子类型表）
+
+6. 嘲讽者打脸安排：
+${settings.mockers.map((m: any) => `   - ${m.name}："${m.signature_taunt}" → 第${m.face_slap_episode}集打脸`).join('\n')}
+
+请输出JSON：
+{
+  "outline": [
+    {
+      "episode": 1,
+      "engine": "引擎名称（信息差炸弹/忍耐极限/情感绑定/底线触碰/绝境感/释放一口气/反转揭底/全面碾压/新悬念/升级恐惧）",
+      "title": "集标题",
+      "shuang_level": "★数量",
+      "protagonist_action_count": 0,
+      "conflict_level": "冲突梯度层级（①②③④⑤）",
+      "core_conflict": "核心冲突（一句话）",
+      "key_scenes": ["场景1简述", "场景2简述", "场景3简述"],
+      "info_gap_status": "本集结束时观众知道但角色不知道的信息",
+      "dark_line_status": "暗线状态（未启动/启动/微进展/部分使用/引爆/已完成）",
+      "mocker_activity": "嘲讽者本集动态（谁说了什么/谁被打脸）",
+      "hook_type": "结尾钩子类型（从10种中选）",
+      "hook_content": "结尾钩子具体内容",
+      "foreshadowing_plant": ["本集埋的伏笔"],
+      "foreshadowing_payoff": ["本集回收的伏笔"]
+    }
+  ],
+  "dark_line_detail": {
+    "ep4_action": "第4集主角悄悄做的事",
+    "ep5_progress": "第5集暗线微进展",
+    "ep6_partial_use": "第6集用到的部分",
+    "ep7_full_reveal": "第7集全面引爆内容",
+    "audience_realization": "观众恍然大悟的内容（原来第4集他就...）"
+  },
+  "face_slap_map": [
+    {
+      "mocker_name": "嘲讽者姓名",
+      "taunt_episode": "嘲讽在第几集",
+      "taunt_line": "原话",
+      "slap_episode": "打脸在第几集",
+      "slap_method": "打脸方式",
+      "callback_line": "主角回扣的话"
+    }
+  ]
+}
+
+⚠️ 自检清单（输出前逐条检查）：
+□ 第5集爽感最低（☆），第8集最高（★★★★★）？
+□ 主角第2-5集出手次数=0？
+□ 暗线第4集启动、第7集引爆？
+□ 10集钩子类型无相邻重复？
+□ 每集info_gap_status非空？
+□ 冲突梯度逐步升级无跳级？
+□ 嘲讽者打脸有具体回扣原话？
+`;
+
+  const result = await callLLM(prompt);
+  console.log(`✅ 10集大纲完成`);
+  result.outline.forEach((ep: any) => {
+    console.log(`   第${ep.episode}集 [${ep.engine}] ${ep.shuang_level} | 冲突${ep.conflict_level} | 出手${ep.protagonist_action_count}次 | 钩子：${ep.hook_type}`);
+  });
+
+  return result;
+}
+
+// ====================== 【步骤3：大纲自检与修复】======================
+async function step3_validateOutline(settings: any, outline: any): Promise<any> {
+  console.log('\n📝 步骤3：大纲自检与修复...');
+
+  const checks: string[] = [];
+
+  // 检查爽感曲线（全部10集）  ← 【修复#7：完整检查所有集】
+  const expectedLevels: Record<number, string> = {
+    1: '★★★', 2: '★★', 3: '★★', 4: '★', 5: '☆',
+    6: '★★★', 7: '★★★★', 8: '★★★★★', 9: '★★', 10: '★★★'
+  };
+
+  outline.outline.forEach((ep: any) => {
+    const expected = expectedLevels[ep.episode];
+    if (!expected) return;
+
+    // 第5集特殊检查：必须是☆
+    if (ep.episode === 5 && !ep.shuang_level.includes('☆')) {
+      checks.push(`❌ 第5集爽感应为☆（最低谷），当前为${ep.shuang_level}`);
+    }
+    // 第8集特殊检查：必须是★★★★★
+    if (ep.episode === 8) {
+      const starCount = (ep.shuang_level.match(/★/g) || []).length;
+      if (starCount < 5) {
+        checks.push(`❌ 第8集爽感应为★★★★★（最高潮），当前为${ep.shuang_level}`);
       }
+    }
+    // 通用检查：其他集爽感等级
+    if (ep.episode !== 5 && ep.episode !== 8) {
+      const expectedStars = (expected.match(/★/g) || []).length;
+      const actualStars = (ep.shuang_level.match(/★/g) || []).length;
+      if (actualStars !== expectedStars) {
+        checks.push(`⚠️ 第${ep.episode}集爽感应为${expected}，当前为${ep.shuang_level}`);
+      }
+    }
+  });
+
+  // 检查出手次数
+  const noActionEps = [2, 3, 4, 5];
+  noActionEps.forEach(epNum => {
+    const ep = outline.outline.find((e: any) => e.episode === epNum);
+    if (ep && ep.protagonist_action_count > 0) {
+      checks.push(`❌ 第${epNum}集主角不应出手，当前出手${ep.protagonist_action_count}次`);
+    }
+  });
+
+  // 检查第6集出手不超过1次
+  const ep6 = outline.outline.find((e: any) => e.episode === 6);
+  if (ep6 && ep6.protagonist_action_count > 1) {
+    checks.push(`❌ 第6集主角出手最多1次，当前出手${ep6.protagonist_action_count}次`);
+  }
+
+  // 检查第9集不出手
+  const ep9 = outline.outline.find((e: any) => e.episode === 9);
+  if (ep9 && ep9.protagonist_action_count > 0) {
+    checks.push(`❌ 第9集主角不应出手（冷却期），当前出手${ep9.protagonist_action_count}次`);
+  }
+
+  // 检查暗线
+  const ep4 = outline.outline.find((e: any) => e.episode === 4);
+  if (ep4 && (!ep4.dark_line_status || ep4.dark_line_status === '未启动')) {
+    checks.push(`❌ 第4集暗线应启动，当前状态：${ep4.dark_line_status || '未设置'}`);
+  }
+  const ep5 = outline.outline.find((e: any) => e.episode === 5);
+  if (ep5 && (!ep5.dark_line_status || !ep5.dark_line_status.includes('微进展'))) {
+    checks.push(`❌ 第5集暗线应有微进展，当前状态：${ep5.dark_line_status || '未设置'}`);
+  }
+  const ep6Check = outline.outline.find((e: any) => e.episode === 6);
+  if (ep6Check && (!ep6Check.dark_line_status || !ep6Check.dark_line_status.includes('部分'))) {
+    checks.push(`⚠️ 第6集暗线应部分使用，当前状态：${ep6Check.dark_line_status || '未设置'}`);
+  }
+  const ep7 = outline.outline.find((e: any) => e.episode === 7);
+  if (ep7 && (!ep7.dark_line_status || !ep7.dark_line_status.includes('引爆'))) {
+    checks.push(`❌ 第7集暗线应引爆，当前状态：${ep7.dark_line_status || '未设置'}`);
+  }
+
+  // 检查钩子不相邻重复
+  for (let i = 0; i < outline.outline.length - 1; i++) {
+    if (outline.outline[i].hook_type === outline.outline[i + 1].hook_type) {
+      checks.push(`❌ 第${i + 1}集和第${i + 2}集钩子类型重复：${outline.outline[i].hook_type}`);
+    }
+  }
+
+  // 检查信息差
+  outline.outline.forEach((ep: any) => {
+    if (!ep.info_gap_status || ep.info_gap_status.trim() === '') {
+      checks.push(`❌ 第${ep.episode}集缺少信息差状态`);
+    }
+  });
+
+  // 检查引擎名称是否正确
+  const validEngines = ['信息差炸弹', '忍耐极限', '情感绑定', '底线触碰', '绝境感', '释放一口气', '反转揭底', '全面碾压', '新悬念', '升级恐惧'];
+  const expectedEngines: Record<number, string> = {
+    1: '信息差炸弹', 2: '忍耐极限', 3: '情感绑定', 4: '底线触碰', 5: '绝境感',
+    6: '释放一口气', 7: '反转揭底', 8: '全面碾压', 9: '新悬念', 10: '升级恐惧'
+  };
+  outline.outline.forEach((ep: any) => {
+    const expected = expectedEngines[ep.episode];
+    if (expected && ep.engine !== expected) {
+      checks.push(`⚠️ 第${ep.episode}集引擎应为"${expected}"，当前为"${ep.engine}"`);
+    }
+  });
+
+  if (checks.length === 0) {
+    console.log('✅ 大纲自检通过，无需修复');
+    return outline;
+  }
+
+  console.log(`⚠️ 发现${checks.length}个问题，请求LLM修复：`);
+  checks.forEach(c => console.log(`   ${c}`));
+
+  const fixPrompt = `
+你之前生成的10集大纲有以下问题，请修复并输出修正后的完整大纲JSON（格式与之前完全相同）：
+
+问题列表：
+${checks.join('\n')}
+
+原大纲：
+${JSON.stringify(outline, null, 2)}
+
+基础设定：
+${JSON.stringify(settings, null, 2)}
+
+修复规则：
+${SHUANG_CURVE_RULES}
+
+${PER_EPISODE_ENGINE}
+
+请输出修正后的完整JSON（格式与原大纲完全一致）。
+`;
+
+  const fixed = await callLLM(fixPrompt);
+  console.log('✅ 大纲修复完成');
+  return fixed;
+}
+
+// ====================== 【步骤4：单集剧本生成】======================
+async function step4_generateEpisodeScript(
+  settings: any,
+  outline: any,
+  episodeNum: number,
+  previousScripts: string[]
+): Promise<string> {
+  console.log(`\n📝 步骤4：生成第${episodeNum}集剧本...`);
+
+  const epOutline = outline.outline.find((e: any) => e.episode === episodeNum);
+  if (!epOutline) throw new Error(`找不到第${episodeNum}集大纲`);
+
+  // 构建前文摘要
+  let previousSummary = '';
+  if (previousScripts.length > 0) {
+    const lastScript = previousScripts[previousScripts.length - 1];
+    previousSummary = `
+上一集（第${episodeNum - 1}集）剧本摘要（最后200字）：
+...${lastScript.slice(-200)}
+
+前面所有集的嘲讽者台词记录（打脸时需要回扣）：
+${settings.mockers.map((m: any) => `- ${m.name}："${m.signature_taunt}"`).join('\n')}
+`;
+  }
+
+  // 确定本集适用的特殊规则
+  let specialRules = '';
+  if (episodeNum <= 3) {
+    specialRules = FIRST_3_EPISODES_RULES;
+  }
+  if (episodeNum === 1) {
+    specialRules += '\n' + EPISODE_1_STRATEGIES;
+  }
+
+  // 暗线细节注入（第4-7集）  ← 【修复#6】
+  let darkLineContext = '';
+  if (episodeNum >= 4 && episodeNum <= 7 && outline.dark_line_detail) {
+    darkLineContext = `
+暗线详情：
+- 第4集暗线行动：${outline.dark_line_detail.ep4_action}
+- 第5集暗线进展：${outline.dark_line_detail.ep5_progress}
+- 第6集部分使用：${outline.dark_line_detail.ep6_partial_use}
+- 第7集全面引爆：${outline.dark_line_detail.ep7_full_reveal}
+- 观众恍然大悟：${outline.dark_line_detail.audience_realization}
+`;
+  }
+
+  // 打脸细节注入（第7-8集）
+  let faceSlipContext = '';
+  if ((episodeNum === 7 || episodeNum === 8) && outline.face_slap_map) {
+   const relevantSlaps = outline.face_slap_map.filter((fs: any) => {
+    const slapEp = String(fs.slap_episode).replace(/[^0-9]/g, '');
+    return slapEp === String(episodeNum);
+  });
+    if (relevantSlaps.length > 0) {
+      faceSlipContext = `
+本集需要打脸的嘲讽者：
+${relevantSlaps.map((fs: any) => `- ${fs.mocker_name}：嘲讽原话"${fs.taunt_line}"（第${fs.taunt_episode}集说的）→ 打脸方式：${fs.slap_method} → 回扣台词："${fs.callback_line}"`).join('\n')}
+`;
+    }
+  }
+
+  const prompt = `
+你是短剧编剧。根据大纲写第${episodeNum}集剧本。
+
+${GLOBAL_TOP_RULES}
+
+${SCRIPT_FORMAT_EXAMPLE}
+
+${specialRules}
+
+${ANTI_BUG_RULES}
+
+基础设定：
+- 标题：${settings.title}
+- 主角：${settings.protagonist.name}（表面：${settings.protagonist.surface_identity}，真实：${settings.protagonist.true_identity}）
+- 性格：${settings.protagonist.personality_tags.join('、')}
+- 标志性动作：${settings.protagonist.signature_actions.join('、')}
+- 口头禅：${settings.protagonist.catchphrase}
+- 金手指：${settings.gold_finger.quantified_description}（${settings.gold_finger.perception}）
+- 女主：${settings.female_lead.name}（${settings.female_lead.personality}）
+- 主反派：${settings.main_villain.name}（动机：${settings.main_villain.motivation}）
+- 嘲讽者：${settings.mockers.map((m: any) => `${m.name}（"${m.signature_taunt}"，第${m.face_slap_episode}集打脸）`).join('；')}
+
+第${episodeNum}集大纲：
+- 引擎：${epOutline.engine}
+- 爽感等级：${epOutline.shuang_level}
+- 主角出手次数：${epOutline.protagonist_action_count}
+- 冲突层级：${epOutline.conflict_level}
+- 核心冲突：${epOutline.core_conflict}
+- 关键场景：${epOutline.key_scenes.join(' → ')}
+- 信息差：${epOutline.info_gap_status}
+- 暗线状态：${epOutline.dark_line_status}
+- 嘲讽者动态：${epOutline.mocker_activity}
+- 结尾钩子：${epOutline.hook_type} — ${epOutline.hook_content}
+- 埋伏笔：${(epOutline.foreshadowing_plant || []).join('、') || '无'}
+- 收伏笔：${(epOutline.foreshadowing_payoff || []).join('、') || '无'}
+
+${darkLineContext}
+${faceSlipContext}
+${previousSummary}
+
+⚠️ 写作硬性要求：
+1. 字数500-700字
+2. 标准竖屏短剧格式：场景头+△动作+角色名：台词，禁止【场景】【画面】【台词】分块
+3. 台词口语化短句有个性，禁止书面语
+4. 主角本集出手${epOutline.protagonist_action_count}次，多一次都不行
+5. 结尾必须在"${epOutline.hook_content}"的最刺激瞬间△黑幕
+6. 嘲讽者台词必须是有名有姓的具体人说的具体话
+7. 信息差：本集结束时观众要知道"${epOutline.info_gap_status}"
+8. 主角至少有1-2句展示个性的台词（痞/嘴欠/淡定/搞笑均可）
+${episodeNum === 8 ? `9. 这是高潮集！打脸时必须精确回扣嘲讽者原话！碾压要彻底！旁观者反应至少3层！` : ''}
+${episodeNum === 7 ? `9. 暗线引爆集！反转必须回扣第4-5集的具体伏笔！至少1个嘲讽者在本集被打脸！` : ''}
+
+直接输出剧本正文，不要任何解释。
+`;
+
+  const script = await callLLM(prompt, false);
+  console.log(`✅ 第${episodeNum}集剧本完成（${script.length}字）`);
+  return script;
+}
+
+// ====================== 【步骤5：单集自检】======================
+async function step5_validateEpisodeScript(
+  settings: any,
+  outline: any,
+  episodeNum: number,
+  script: string
+): Promise<string> {
+  if (!ENABLE_RULE_CHECK) {
+    console.log(`⏭️ 自检已关闭，跳过第${episodeNum}集自检`);
+    return script;
+  }
+
+  console.log(`\n📝 步骤5：第${episodeNum}集自检...`);
+
+  const epOutline = outline.outline.find((e: any) => e.episode === episodeNum);
+
+  const prompt = `
+你是短剧质检员。检查以下剧本是否符合要求，如不符合请直接修改输出完整剧本。
+
+检查项（逐条检查）：
+1. □ 格式正确？场景头+△动作+角色名：台词，无【场景】【画面】分块？
+2. □ 字数500-700字？
+3. □ 主角出手次数=${epOutline.protagonist_action_count}次？（多了要删，少了看大纲是否要求出手）
+4. □ 结尾是最刺激瞬间△黑幕？钩子内容：${epOutline.hook_content}
+5. □ 嘲讽者有名有姓？台词具体？不是泛泛的"众人嘲笑"？
+6. □ 信息差到位？观众能知道"${epOutline.info_gap_status}"？
+7. □ 主角有个性台词？不是全程沉默？
+8. □ 台词口语化？无书面语？
+9. □ 暗线状态=${epOutline.dark_line_status}，有体现？
+${episodeNum === 8 ? '10. □ 打脸回扣了嘲讽者原话？碾压够彻底？旁观者反应至少3层？' : ''}
+${episodeNum === 7 ? '10. □ 暗线引爆回扣了第4-5集伏笔？反转有据可循？' : ''}
+${episodeNum === 1 ? '10. □ 透底通过三要素检验（独占性+具体性+可期待性）？' : ''}
+
+原剧本：
+${script}
+
+基础设定摘要：
+主角：${settings.protagonist.name}，口头禅：${settings.protagonist.catchphrase}
+嘲讽者：${settings.mockers.map((m: any) => `${m.name}："${m.signature_taunt}"`).join('；')}
+
+如果所有检查项都通过，原样输出剧本。
+如果有不通过的，直接输出修改后的完整剧本（不要解释哪里改了，直接输出最终版本）。
+`;
+
+  const validated = await callLLM(prompt, false);
+  console.log(`✅ 第${episodeNum}集自检完成`);
+  return validated;
+}
+
+// ====================== 【主流程】======================
+async function main() {
+  console.log('🎬 短剧创作引擎 v3.0 启动\n');
+  console.log('='.repeat(60));
+
+  const userInput = USER_INPUT;
+  console.log(`📌 用户输入：${userInput}`);
+  console.log('='.repeat(60));
+
+  try {
+    // ========== 步骤1：基础设定 ==========
+    const settings = await step1_generateBasicSettings(userInput);
+    console.log('\n' + '='.repeat(60));
+    console.log('📋 基础设定JSON：');
+    console.log(JSON.stringify(settings, null, 2));
+    console.log('='.repeat(60));
+
+    // ========== 步骤2：10集大纲 ==========
+    const rawOutline = await step2_generateOutline(settings);
+    console.log('\n' + '='.repeat(60));
+
+    // ========== 步骤3：大纲自检修复 ==========
+    const outline = await step3_validateOutline(settings, rawOutline);
+    console.log('\n📋 最终大纲：');
+    console.log(JSON.stringify(outline, null, 2));
+    console.log('='.repeat(60));
+
+    // ========== 步骤4+5：逐集生成并自检 ==========
+    const allScripts: string[] = [];
+
+    for (let ep = 1; ep <= 10; ep++) {
+      console.log('\n' + '-'.repeat(60));
+      console.log(`🎬 开始生成第${ep}集...`);
+      console.log('-'.repeat(60));
+
+      // 生成剧本
+      let script = await step4_generateEpisodeScript(settings, outline, ep, allScripts);
+
+      // 自检修复
+      script = await step5_validateEpisodeScript(settings, outline, ep, script);
 
       allScripts.push(script);
 
-      previousSummary = `前${episode.episode_num}集摘要：\n`;
-      const recentScripts = allScripts.slice(-3);
-      recentScripts.forEach((s, idx) => {
-        const epNum = episode.episode_num - (recentScripts.length - 1 - idx);
-        previousSummary += `第${epNum}集：${s.slice(0, 150).replace(/\n/g, ' ')}...\n`;
-      });
+      // 输出剧本
+      console.log('\n' + '='.repeat(60));
+      console.log(`📜 第${ep}集 最终剧本：`);
+      console.log('='.repeat(60));
+      console.log(script);
+      console.log('='.repeat(60));
+
+      // 防止限流，间隔等待
+      if (ep < 10) {
+        console.log(`⏳ 等待${DELAY_BETWEEN_EPISODES / 1000}秒后生成下一集...`);
+        await delay(DELAY_BETWEEN_EPISODES);
+      }
     }
 
-    return allScripts.join('\n\n---\n\n');
+    // ========== 最终输出汇总 ==========
+    console.log('\n\n');
+    console.log('🏆'.repeat(30));
+    console.log('🎬 全部10集生成完成！');
+    console.log('🏆'.repeat(30));
+
+    console.log('\n📊 生成统计：');
+    allScripts.forEach((s, i) => {
+      console.log(`   第${i + 1}集：${s.length}字`);
+    });
+    console.log(`   总计：${allScripts.reduce((sum, s) => sum + s.length, 0)}字`);
+
+    // 输出完整剧本合集
+    console.log('\n\n');
+    console.log('='.repeat(60));
+    console.log('📖 完整剧本合集');
+    console.log('='.repeat(60));
+    allScripts.forEach((s, i) => {
+      console.log(`\n${'─'.repeat(40)}`);
+      console.log(`第${i + 1}集`);
+      console.log('─'.repeat(40));
+      console.log(s);
+    });
+
+  } catch (error: any) {
+    console.error(`\n❌ 生成失败：${error.message}`);
+    console.error(error.stack);
   }
 }
+
+// ====================== 【启动】======================
+main();
