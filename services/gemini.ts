@@ -28,16 +28,17 @@ const GOLD_FINGER_FRAMEWORK = `
 3. 【可期待性】：观众知道这个信息后，能产生"他什么时候用这个底牌翻盘？"的期待
 `;
 
+// ✅ 仅修改此处：细化第一集开场策略，强制零铺垫炸场
 const EPISODE_1_STRATEGIES = `
-## 第1集开场策略
+## 第1集开场策略（爽剧强制版：所有策略必须前3个镜头出爽点，绝对禁止先拍废物场景再铺垫）
 ### 策略A：先炸后藏（适用于：扮猪吃虎/战神归来/赘婿逆袭/身份隐藏类）
-核心逻辑：先让观众看到主角最强的样子→交代为什么要藏→画面一转进入"废物"状态
+核心逻辑：【正序先炸】第1个镜头直接拍主角最强巅峰时刻（配金手指量化展示，比如「麾下30万西北军齐喊主帅」「首富敲钟市值破万亿」）→ 仅用1个镜头交代隐忍理由→ 第3个镜头直接切到「废物」状态被嘲讽的场景，全程10秒内完成反差，绝对禁止先拍废物场景再闪回
 ### 策略B：日常暴露（适用于：天赋异禀/不自知/气运流/隐性金手指类）
-核心逻辑：主角做日常小事→无意间做了逆天的事但不知道→知情人看到后量化反应
+核心逻辑：【开场先透底】第1个镜头直接给观众展示主角的隐性金手指（比如字幕提示「他的气运值是全宇宙第一」「他随手画的符是仙级」）→ 第2个镜头拍主角做日常小事→ 无意间做了逆天的事但不知道→ 知情人看到后量化反应，前2个镜头就给观众上帝视角
 ### 策略C：系统激活（适用于：直播爽文/规则怪谈/系统流）
-核心逻辑：主角最低谷时系统激活→给出第一个任务/规则→完成后获得第一次小爽
+核心逻辑：【开场先踩】第1个镜头直接拍主角最低谷被踩死的边缘（比如欠了100万被打断腿）→ 第2个镜头系统直接激活弹窗给观众看（量化初始奖励）→ 给出第一个任务/规则→ 完成后获得第一次小爽，前3个镜头完成「踩→激活→爽」的节奏
 ### 策略D：重生闪回（适用于：重生复仇/先知流）
-核心逻辑：前世最惨的死亡画面→睁眼回到过去→立刻做只有重生者才会做的事
+核心逻辑：【开场先惨】第1个镜头直接拍前世最惨的死亡画面（被最信任的人背叛捅死）→ 第2个镜头直接睁眼回到过去（特写时间点，给观众透底）→ 第3个镜头立刻做只有重生者才会做的事（比如直接甩了背叛他的前女友），前3个镜头完成「惨→重生→爽」的节奏
 `;
 
 const PER_EPISODE_ENGINE = `
@@ -60,14 +61,15 @@ const PER_EPISODE_ENGINE = `
 `;
 
 const SHUANGDIAN_EXEC_RULES = `
-## 爽点执行规则
+## 爽点执行规则（爽剧强制版）
 - 每个核心爽点搭配至少1个辅助爽感元素
-- 装逼打脸：先铺嘲讽→打脸干脆+回扣原话+全场震惊
+- 装逼打脸：先铺嘲讽→打脸干脆+回扣原话+全场震惊（至少3层旁观者反应）
 - 暗线规则：第4集埋→第5集微进展→第6集部分使用→第7集引爆
-- 旁观者烘托：冲突场景至少2-3类旁观者反应
+- 旁观者烘托：冲突场景至少2-3类旁观者反应（下人/亲戚/外人分层）
 - 打脸闭环：每个嘲讽者必须有打脸回报，回扣具体嘲讽台词
 - 伏笔闭环：所有伏笔本阶段回收
 - 禁止连续2集相同冲突
+- 嘲讽台词必须直接戳主角核心痛点（比如赘婿骂「吃软饭的野狗」，战神骂「逃兵废物」），不能软绵绵
 `;
 
 const FORMAT_RULES = `
@@ -107,6 +109,7 @@ const SCRIPT_FORMAT_EXAMPLE = `
 △黑幕。
 `;
 
+// ✅ 仅修改此处：补充爽剧专属防踩坑规则
 const ANTI_BUG_RULES = `
 ## 防踩坑规则
 1. 显性-隐忍型必须有隐忍理由；隐性型无需理由
@@ -124,6 +127,17 @@ const ANTI_BUG_RULES = `
 13. 嘲讽者必须有名有姓有标志性台词
 14. 第5集必须是最低谷，第8集必须是最高潮
 15. 第8集打脸必须精确回扣嘲讽者原话
+16. 相邻集钩子类型必须不同，仅限「反差钩子/悬念钩子/情感钩子/危机钩子」四类
+17. 冲突场景必须包含至少3类不同身份旁观者的分层反应
+18. 金手指能力展示必须严格匹配量化数值，前后表述完全统一
+19. 每集必须至少出现1次主角标志性动作、1次主角口头禅（如有）
+20. 暗线进展必须添加观众专属上帝视角提示，明确信息差
+// 以下为爽剧专属新增规则
+21. 第一集绝对禁止先拍主角落魄/被嘲讽场景，再闪回/补设定巅峰身份，必须先给巅峰高光，再切落魄，反差拉满
+22. 第一集前3个镜头必须完成「观众透底」，明确告知观众主角的真实底牌/金手指，信息差必须开场就建立
+23. 所有爽点必须搭配量化展示：实力爽点配具体数值，财富爽点配具体金额，打脸爽点配至少3层旁观者反应
+24. 主角隐忍时必须加1句观众专属的OS/特写，明确告诉观众主角是故意忍，不是真的窝囊，避免观众弃剧
+25. 嘲讽台词必须直接戳主角核心痛点，不能模糊、软绵绵
 `;
 
 function delay(ms: number): Promise<void> {
@@ -164,8 +178,9 @@ async function callLLM(
             {
               role: "system",
               content: needJson
-                ? `你是专业短剧创作助手。输出JSON用<json></json>标签包裹，标签外无任何内容。JSON严格规范：双引号key、字符串内双引号转义、无trailing comma。尽量精简输出，不要输出多余解释。`
-                : `你是专业短剧编剧。写标准短剧格式（△动作+角色名：台词），绝对不用【场景】【画面】【台词】分块格式。台词口语化短句有个性。结尾在最刺激瞬间△黑幕。`
+                ? `你是专业爽剧短剧创作助手。输出JSON用<json></json>标签包裹，标签外无任何内容。JSON严格规范：双引号key、字符串内双引号转义、无trailing comma。尽量精简输出，不要输出多余解释。爽感优先，所有设定服务于爽点。`
+                // ✅ 仅修改此处：生成剧本的系统提示加爽剧要求
+                : `你是专业爽剧短剧编剧，爽点优先，反差越大越好，打脸越狠越好，绝对不要拖沓铺垫。写标准短剧格式（△动作+角色名：台词），绝对不用【场景】【画面】【台词】分块格式。台词口语化短句有个性。结尾在最刺激瞬间△黑幕。`
             },
             { role: 'user', content: prompt }
           ],
@@ -219,7 +234,7 @@ export class GeminiService {
 
   async analyzeNovel(novel: string): Promise<string> {
     const prompt = `
-你是专业短剧编剧AI。分析以下原著小说，提取骨架信息并判定最适合的改编方向。
+你是专业爽剧短剧编剧AI。分析以下原著小说，提取骨架信息并判定最适合的改编方向，所有分析服务于爽点最大化。
 
 ${GOLD_FINGER_FRAMEWORK}
 ${EPISODE_1_STRATEGIES}
@@ -232,39 +247,39 @@ ${novel.slice(0, 8000)}
 ## 一、原著骨架提取
 1. 核心人物关系图
 2. 核心冲突主线
-3. 主角的底层动机
-4. 原著中最有爽感潜力的3个情节点
+3. 主角的底层动机（必须具体可落地，有明确触发爆发的条件）
+4. 原著中最有爽感潜力的3个情节点（必须可量化、可直接改成开场炸场内容）
 
 ## 二、流派判定
 1. 最适合的子流派
 2. 判定依据
-3. 推荐的核心爽梗
+3. 推荐的核心爽梗（必须能在第一集开场就展示）
 4. 推荐的辅助爽梗
 
 ## 三、金手指设计建议
 1. 推荐金手指类型及感知维度
-2. 量化描述建议
-3. 透底形式建议
-4. 隐忍理由建议
+2. 量化描述建议（必须具体到数字，能直接放在第一集开场展示）
+3. 透底形式建议（必须能在前3个镜头完成透底）
+4. 隐忍理由建议（必须合理，能让观众接受主角前5集不出手）
 
 ## 四、魔改方向建议
 1. 原著中需要保留的核心骨架
-2. 需要强化/魔改的部分
-3. 需要删减的部分
+2. 需要强化/魔改的部分（优先强化能提升爽感的内容）
+3. 需要删减的部分（全部删掉拖沓的铺垫、无关的支线）
 4. 建议新增的爽点元素
 
 ## 五、终极钩子建议
 1. 推荐的终极钩子
-2. 观众追到底要看的是什么
+2. 观众追到底要看的是什么（必须具体，比如「看主角如何用30万西北军碾压所有欺辱过他的人」）
 
-请直接输出分析报告，语言专业但易懂。
+请直接输出分析报告，语言专业但易懂，所有内容优先考虑爽感。
 `;
     return await callLLM(prompt, false, 0.5, MAX_RETRY, 240000);
   }
 
   async generateOutline(novel: string, analysisReport: string): Promise<string> {
     const settingsPrompt = `
-你是短剧编剧AI。根据原著分析报告，生成短剧基础设定。
+你是爽剧短剧编剧AI。根据原著分析报告，生成短剧基础设定，所有设定服务于爽点最大化。
 
 ${GOLD_FINGER_FRAMEWORK}
 ${EPISODE_1_STRATEGIES}
@@ -277,9 +292,9 @@ ${analysisReport.slice(0, 3000)}
 
 请输出精简JSON（不要多余解释），用<json></json>包裹：
 {
-  "title": "短剧标题",
+  "title": "短剧标题（必须带爽点，比如《战神赘婿：丈母娘悔哭了》）",
   "genre": "子流派",
-  "core_shuangdian": "核心爽梗",
+  "core_shuangdian": "核心爽梗（必须可在第一集开场展示）",
   "auxiliary_shuangdian": ["辅助1", "辅助2"],
   "shuangdian_type": "爽梗大类",
   "gold_finger": {
@@ -287,19 +302,19 @@ ${analysisReport.slice(0, 3000)}
     "perception": "感知维度",
     "form": "存在形式",
     "action": "作用方式",
-    "quantified_description": "量化描述（必须具体到数字）",
-    "reveal_method": "透底形式",
-    "hide_reason": "隐忍理由"
+    "quantified_description": "量化描述（必须具体到数字，能直接放在第一集开场）",
+    "reveal_method": "透底形式（必须前3个镜头完成）",
+    "hide_reason": "隐忍理由（必须合理，观众能接受）"
   },
   "episode_1_strategy": "A或B或C或D",
   "protagonist": {
     "name": "姓名",
-    "surface_identity": "表面身份",
-    "true_identity": "真实底牌",
+    "surface_identity": "表面身份（必须够惨，反差够大）",
+    "true_identity": "真实底牌（必须够强，反差够大）",
     "personality_tags": ["性格1", "性格2"],
-    "signature_actions": ["动作1"],
-    "catchphrase": "口头禅",
-    "bottom_line": "底线"
+    "signature_actions": ["动作1（必须有辨识度，比如摸戒指/插兜）"],
+    "catchphrase": "口头禅（必须够爽，比如「我的人你也敢动？」）",
+    "bottom_line": "底线（必须明确，触碰就爆发）"
   },
   "female_lead": {
     "name": "姓名",
@@ -308,20 +323,20 @@ ${analysisReport.slice(0, 3000)}
   },
   "main_villain": {
     "name": "姓名",
-    "motivation": "动机",
+    "motivation": "动机（必须够坏，拉满仇恨）",
     "escalation_path": "手段升级路径"
   },
   "mockers": [
     {
       "name": "姓名",
       "identity": "身份",
-      "signature_taunt": "标志性嘲讽台词",
+      "signature_taunt": "标志性嘲讽台词（必须戳主角痛处）",
       "face_slap_episode": 7,
-      "face_slap_method": "打脸方式"
+      "face_slap_method": "打脸方式（必须够狠）"
     }
   ],
-  "ultimate_hook": "终极钩子",
-  "setting_summary": "一句话概括"
+  "ultimate_hook": "终极钩子（必须具体）",
+  "setting_summary": "一句话概括（带爽点）"
 }
 `;
 
@@ -329,7 +344,7 @@ ${analysisReport.slice(0, 3000)}
     await delay(API_CALL_DELAY);
 
     const outline1Prompt = `
-你是短剧编剧AI。根据基础设定生成第1-5集大纲。
+你是爽剧短剧编剧AI。根据基础设定生成第1-5集大纲，爽感优先，严格符合爽感曲线。
 
 ${PER_EPISODE_ENGINE}
 ${SHUANGDIAN_EXEC_RULES}
@@ -353,15 +368,15 @@ ${SHUANGDIAN_EXEC_RULES}
     {
       "episode": 1,
       "engine": "信息差炸弹",
-      "title": "集标题",
+      "title": "集标题（带爽点）",
       "shuang_level": "★★★",
       "protagonist_action_count": 1,
       "conflict_level": "口头嘲讽",
       "core_conflict": "一句话",
-      "key_scenes": ["场景1", "场景2", "场景3"],
-      "info_gap_status": "信息差状态",
+      "key_scenes": ["场景1（必须是主角巅峰炸场场景，含金手指量化展示）", "场景2", "场景3"],
+      "info_gap_status": "信息差状态（必须是观众全知，角色全不知）",
       "dark_line_status": "无",
-      "mocker_activity": "嘲讽者动态",
+      "mocker_activity": "嘲讽者动态（必须够狠，拉仇恨）",
       "hook_type": "反差钩子",
       "hook_content": "钩子内容",
       "foreshadowing_plant": ["伏笔1"],
@@ -369,14 +384,14 @@ ${SHUANGDIAN_EXEC_RULES}
     }
   ]
 }
-注意：每集key_scenes最多3个，描述尽量简短。第4集暗线启动，第5集最低谷。
+注意：每集key_scenes最多3个，描述尽量简短。第4集暗线启动，第5集必须是绝对最低谷，主角无任何外露翻盘迹象。第2-5集主角出手次数严格为0。相邻集钩子类型必须不同。
 `;
 
     const outline1 = await callLLM(outline1Prompt, true, 0.3, MAX_RETRY, 300000);
     await delay(API_CALL_DELAY);
 
     const outline2Prompt = `
-你是短剧编剧AI。根据基础设定和前5集大纲，生成第6-10集大纲、暗线详情和打脸映射。
+你是爽剧短剧编剧AI。根据基础设定和前5集大纲，生成第6-10集大纲、暗线详情和打脸映射，爽感优先，打脸够狠。
 
 ${PER_EPISODE_ENGINE}
 
@@ -399,7 +414,7 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
     {
       "episode": 6,
       "engine": "释放一口气",
-      "title": "集标题",
+      "title": "集标题（带爽点）",
       "shuang_level": "★★★",
       "protagonist_action_count": 1,
       "conflict_level": "层级",
@@ -415,24 +430,24 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
     }
   ],
   "dark_line_detail": {
-    "ep4_action": "第4集暗线动作",
-    "ep5_progress": "第5集微进展",
+    "ep4_action": "第4集暗线动作（必须给观众上帝视角提示）",
+    "ep5_progress": "第5集微进展（必须给观众上帝视角提示）",
     "ep6_partial_use": "第6集部分使用",
     "ep7_full_reveal": "第7集全面引爆",
-    "audience_realization": "观众恍然大悟的内容"
+    "audience_realization": "观众恍然大悟的内容（必须够爽）"
   },
   "face_slap_map": [
     {
       "mocker_name": "姓名",
       "taunt_episode": 2,
-      "taunt_line": "嘲讽原话",
+      "taunt_line": "嘲讽原话（必须戳痛处）",
       "slap_episode": 7,
-      "slap_method": "打脸方式",
-      "callback_line": "回扣台词"
+      "slap_method": "打脸方式（必须够狠）",
+      "callback_line": "回扣台词（必须精确对应嘲讽原话）"
     }
   ]
 }
-注意：第7集暗线引爆，第8集全面碾压打脸回扣原话，第9-10集引入新威胁。
+注意：第7集暗线引爆，第8集必须全面碾压所有嘲讽者，打脸精确回扣原话。第9-10集引入的新威胁必须够强，留足钩子。相邻集钩子类型必须不同。
 `;
 
     const outline2 = await callLLM(outline2Prompt, true, 0.3, MAX_RETRY, 300000);
@@ -527,14 +542,15 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
         previousSummary = `上一集结尾：\n...${allScripts[allScripts.length - 1].slice(-200)}`;
       }
 
+      // ✅ 仅修改此处：第一集加专属炸场强制规则
       let specialRules = '';
-      if (ep === 1) specialRules = EPISODE_1_STRATEGIES;
-      if (ep <= 3) specialRules += '\n禁止第2-3集主角正面出手。';
+      if (ep === 1) specialRules = `${EPISODE_1_STRATEGIES}\n⚠️ 第一集强制零铺垫炸场：前3个镜头必须直接展示主角巅峰高光+金手指量化效果，100字以内完成，第4个镜头立刻切到落魄/被嘲讽场景，绝对禁止先拍废物场景再闪回/补设定。`;
+      if (ep <= 5) specialRules += '\n第2-5集严格禁止主角任何形式的出手，最多只能有微表情变化，必须加观众专属OS提示主角是故意隐忍。';
 
       let darkLineContext = '';
       if (ep >= 4 && ep <= 7 && this.outline.dark_line_detail) {
         const dl = this.outline.dark_line_detail;
-        darkLineContext = `暗线详情：第4集${dl.ep4_action}→第5集${dl.ep5_progress}→第6集${dl.ep6_partial_use}→第7集${dl.ep7_full_reveal}`;
+        darkLineContext = `暗线详情：第4集${dl.ep4_action}→第5集${dl.ep5_progress}→第6集${dl.ep6_partial_use}→第7集${dl.ep7_full_reveal}。暗线进展必须加观众专属特写提示，剧内角色不知情。`;
       }
 
       let faceSlipContext = '';
@@ -544,14 +560,14 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
           return slapEp === String(ep);
         });
         if (relevantSlaps.length > 0) {
-          faceSlipContext = `本集打脸：\n${relevantSlaps.map((fs: any) => `- ${fs.mocker_name}：原话"${fs.taunt_line}" → 回扣："${fs.callback_line}"`).join('\n')}`;
+          faceSlipContext = `本集打脸：\n${relevantSlaps.map((fs: any) => `- ${fs.mocker_name}：原话"${fs.taunt_line}" → 回扣："${fs.callback_line}"。打脸必须干脆，至少3层旁观者反应。`).join('\n')}`;
         }
       }
 
       const formatRef = formattingRef ? `\n排版参考：\n${formattingRef.slice(0, 800)}\n请模仿以上排版格式。` : '';
 
       const prompt = `
-你是短剧编剧。根据大纲写第${ep}集剧本。
+你是爽剧短剧编剧。根据大纲写第${ep}集剧本，爽感优先，打脸够狠，绝对不要拖沓铺垫。
 
 ${FORMAT_RULES}
 ${SCRIPT_FORMAT_EXAMPLE}
@@ -593,10 +609,12 @@ ${formatRef}
 3. 台词口语化短句有个性
 4. 主角出手${epOutline.protagonist_action_count}次
 5. 结尾在"${epOutline.hook_content || '最刺激瞬间'}"△黑幕
-${ep === 8 ? '6. 高潮集！打脸回扣原话！碾压彻底！旁观者至少3层！' : ''}
-${ep === 7 ? '6. 暗线引爆！反转回扣第4-5集伏笔！' : ''}
-
-直接输出剧本正文，不要任何解释。
+${ep === 8 ? '6. 高潮集！所有前7集嘲讽者全部打脸，精确回扣原话，碾压彻底，至少4层旁观者反应！' : ''}
+${ep === 7 ? '6. 暗线引爆！反转回扣第4-5集伏笔，观众爽感拉满！' : ''}
+7. 所有爽点必须有量化展示，比如实力展示配具体数值，财富展示配具体金额
+8. 主角隐忍时必须加1句观众专属OS/特写，明确告诉观众主角是故意忍，不是窝囊
+9. 嘲讽台词必须够狠，直接戳主角痛处，不能软绵绵
+10. 本集必须至少出现1次主角标志性动作、1次主角口头禅
 `;
 
       const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, MAX_RETRY, 240000);
