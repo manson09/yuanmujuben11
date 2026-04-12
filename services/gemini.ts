@@ -1,13 +1,3 @@
-好的，我仔细分析了你的问题。核心原因是：
-
-1. **文件内容重复了两遍**（从 `}// ====================== 【配置区】` 开始完整重复）
-2. **大纲生成单次要求LLM输出的JSON太庞大**，容易超时
-3. **超时时间180秒对复杂JSON生成不够**
-
-下面是修复后的完整 `services/gemini.ts`，一个字都不用改，直接替换你现有文件：
-
-```typescript
-// ====================== 【配置区】======================
 const PROXY_URL = "/api/llm";
 const MODEL_NAME = "anthropic/claude-sonnet-4.6";
 const MAX_RETRY = 5;
@@ -15,7 +5,6 @@ const API_CALL_DELAY = 3000;
 const DELAY_BETWEEN_EPISODES = 5000;
 const DEFAULT_TEMPERATURE = 0.7;
 
-// ====================== 【全局规则常量】======================
 const GOLD_FINGER_FRAMEWORK = `
 ## 金手指分类与匹配框架
 ### 金手指三大维度
@@ -137,7 +126,6 @@ const ANTI_BUG_RULES = `
 15. 第8集打脸必须精确回扣嘲讽者原话
 `;
 
-// ====================== 【工具函数】======================
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -225,12 +213,10 @@ async function callLLM(
   throw new Error('LLM调用失败：已耗尽所有重试次数');
 }
 
-// ====================== 【导出类】======================
 export class GeminiService {
   private settings: any = null;
   private outline: any = null;
 
-  // ==================== 方法1：分析原著 ====================
   async analyzeNovel(novel: string): Promise<string> {
     const prompt = `
 你是专业短剧编剧AI。分析以下原著小说，提取骨架信息并判定最适合的改编方向。
@@ -276,10 +262,7 @@ ${novel.slice(0, 8000)}
     return await callLLM(prompt, false, 0.5, MAX_RETRY, 240000);
   }
 
-  // ==================== 方法2：生成大纲（拆分为3步，防超时）====================
   async generateOutline(novel: string, analysisReport: string): Promise<string> {
-
-    // ===== 步骤1：生成基础设定 =====
     const settingsPrompt = `
 你是短剧编剧AI。根据原著分析报告，生成短剧基础设定。
 
@@ -345,7 +328,6 @@ ${analysisReport.slice(0, 3000)}
     this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 300000);
     await delay(API_CALL_DELAY);
 
-    // ===== 步骤2：生成10集大纲（前5集）=====
     const outline1Prompt = `
 你是短剧编剧AI。根据基础设定生成第1-5集大纲。
 
@@ -357,8 +339,8 @@ ${SHUANGDIAN_EXEC_RULES}
 - 核心爽梗：${this.settings.core_shuangdian}
 - 金手指：${this.settings.gold_finger.quantified_description}（${this.settings.gold_finger.perception}）
 - 主角：${this.settings.protagonist.name}（表面${this.settings.protagonist.surface_identity}，真实${this.settings.protagonist.true_identity}）
-- 女主：${this.settings.female_lead.name}
-- 主反派：${this.settings.main_villain.name}（${this.settings.main_villain.motivation}）
+- 女主：${(this.settings.female_lead || {}).name || '无'}
+- 主反派：${(this.settings.main_villain || {}).name || '无'}（${(this.settings.main_villain || {}).motivation || ''}）
 - 嘲讽者：${(this.settings.mockers || []).map((m: any) => m.name + '："' + m.signature_taunt + '"').join('；')}
 - 开场策略：${this.settings.episode_1_strategy}
 - 终极钩子：${this.settings.ultimate_hook}
@@ -393,7 +375,6 @@ ${SHUANGDIAN_EXEC_RULES}
     const outline1 = await callLLM(outline1Prompt, true, 0.3, MAX_RETRY, 300000);
     await delay(API_CALL_DELAY);
 
-    // ===== 步骤3：生成10集大纲（后5集+暗线+打脸）=====
     const outline2Prompt = `
 你是短剧编剧AI。根据基础设定和前5集大纲，生成第6-10集大纲、暗线详情和打脸映射。
 
@@ -456,7 +437,6 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
 
     const outline2 = await callLLM(outline2Prompt, true, 0.3, MAX_RETRY, 300000);
 
-    // ===== 合并大纲 =====
     const allEpisodes = [
       ...(outline1.episodes || []),
       ...(outline2.episodes || [])
@@ -474,7 +454,6 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
       face_slap_map: outline2.face_slap_map || []
     };
 
-    // ===== 组装输出文本 =====
     let output = `# 📋 《${this.settings.title}》基础设定\n\n`;
     output += `子流派：${this.settings.genre}\n`;
     output += `核心爽梗：${this.settings.core_shuangdian}（${this.settings.shuangdian_type || ''}）\n`;
@@ -525,7 +504,6 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
     return output;
   }
 
-  // ==================== 方法3：生成剧本 ====================
   async generateScripts(
     outlineText: string,
     phase: number,
@@ -620,21 +598,6 @@ ${ep === 7 ? '6. 暗线引爆！反转回扣第4-5集伏笔！' : ''}
 
 直接输出剧本正文，不要任何解释。
 `;
-
-      const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, MAX_RETRY, 240000);
-      allScripts.push(`${'─'.repeat(40)}\n第${ep}集\n${'─'.repeat(40)}\n\n${script}`);
-
-      if (ep继续，从 `if (ep` 接着：
-
-```typescript
-      if (ep < endEp) {
-        await delay(DELAY_BETWEEN_EPISODES);
-      }
-    }
-
-    return allScripts.join('\n\n');
-  }
-}
 
       const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, MAX_RETRY, 240000);
       allScripts.push(`${'─'.repeat(40)}\n第${ep}集\n${'─'.repeat(40)}\n\n${script}`);
