@@ -1,9 +1,9 @@
-const PROXY_URL = "/api/llm";
-const MODEL_NAME = "anthropic/claude-sonnet-4.6";
-const MAX_RETRY = 5;
-const API_CALL_DELAY = 3000;
-const DELAY_BETWEEN_EPISODES = 5000;
-const DEFAULT_TEMPERATURE = 0.7;
+const PROXY_URL = "/api/llm"; 
+const MODEL_NAME = "doubao-seed-pro-250528"; 
+const MAX_RETRY = 5; // ✅ 不用改
+const API_CALL_DELAY = 3000; // ✅ 不用改
+const DELAY_BETWEEN_EPISODES = 5000; 
+const DEFAULT_TEMPERATURE = 0.85;
 
 const GOLD_FINGER_FRAMEWORK = `
 ## 金手指分类与匹配框架
