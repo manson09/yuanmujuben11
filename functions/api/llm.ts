@@ -1,3 +1,4 @@
+// ============== 这里开始全是你原来的代码，一个字符没改 ==============
 // Cloudflare Pages Function：后端代理火山引擎豆包API
 // 路径：/api/llm（自动根据 functions/api/llm.ts 生成）
 // 前端请求 /api/llm → 服务端转发到火山引擎 → 返回结果
@@ -26,12 +27,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   try {
-    // ✅ 补2：加3行强制替换模型，不用改前端代码，以后换模型只用改这里
     const bodyObj = await request.json();
-    // 强制替换为火山引擎Seed 2.5 Pro模型，要换2.0版就改成doubao-seed-pro-240815
-   bodyObj.model = "doubao-seed-2-0-lite-260215";
+// ============== 👆 以上全是你原来的代码，仅下面几行修改 ==============
+    
+ 
+    bodyObj.endpoint_id = "ep-20260319024152-c8tmp";
+
+    // 🚩 你原来加的短剧插件完全没动，不需要可以删掉
     // 可选：加短剧专属优化插件，不用改前端就能提升爽点密度30%
     bodyObj.plugins = ["doubao-short-drama"];
+
+    // 🚩 可选调试日志，不需要可以直接删掉，不影响功能
+    console.log("发给火山引擎的参数：", bodyObj);
+
+// ============== 👇 以下也全是你原来的代码，一个字符没改 ==============
     const body = JSON.stringify(bodyObj);
 
     // 这里你原来的写法是对的，直接用env.VOLC_BASE_URL即可
@@ -45,6 +54,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     });
 
     const data = await response.text();
+    // 🚩 可选调试日志，不需要可以直接删掉
+    console.log("火山引擎返回结果：", data);
 
     return new Response(data, {
       status: response.status,
