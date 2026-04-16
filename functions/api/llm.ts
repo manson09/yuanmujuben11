@@ -30,6 +30,16 @@ function withCors(headers: Record<string, string> = {}): Record<string, string> 
   };
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const onRequestGet = async (context: { env: Env }) => {
   const { env } = context;
   return new Response(
@@ -77,14 +87,14 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
 
     // 这里你原来的写法是对的，直接用env.VOLC_BASE_URL即可
     const upstreamUrl = normalizeBaseUrl(baseUrl);
-    const response = await fetch(upstreamUrl, {
+    const response = await fetchWithTimeout(upstreamUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: body,
-    });
+    }, 25000);
 
     const dataText = await response.text();
     const upstreamBody = tryParseJson(dataText) ?? dataText;
@@ -113,9 +123,13 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       }
     );
   } catch (err: any) {
+    const message =
+      err?.name === 'AbortError'
+        ? '上游请求超时（25秒）。请降低输出长度/换更快模型，或拆分为多次请求。'
+        : err?.message || '未知错误';
     return new Response(
-      JSON.stringify({ error: `代理请求失败：${err.message}` }),
-      { status: 502, headers: withCors({ 'Content-Type': 'application/json' }) }
+      JSON.stringify({ error: `代理请求失败：${message}` }),
+      { status: err?.name === 'AbortError' ? 504 : 502, headers: withCors({ 'Content-Type': 'application/json' }) }
     );
   }
 }
