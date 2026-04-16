@@ -165,8 +165,10 @@ async function callLLM(
   needJson: boolean = true,
   temperature: number = DEFAULT_TEMPERATURE,
   retries: number = MAX_RETRY,
-  timeoutMs: number = 180000
+  timeoutMs: number = 180000,
+  maxTokens: number = 4096
 ): Promise<any> {
+  let lastError: any = null;
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await fetchWithTimeout(PROXY_URL, {
@@ -185,7 +187,7 @@ async function callLLM(
             { role: 'user', content: prompt }
           ],
           temperature: needJson ? 0.3 : temperature,
-          max_tokens: 16000,
+          max_tokens: maxTokens,
         }),
       }, timeoutMs);
 
@@ -222,6 +224,7 @@ async function callLLM(
       await delay(API_CALL_DELAY);
       return content;
     } catch (error: any) {
+      lastError = error;
       if (error.message?.includes('API_KEY') || error.message?.includes('模型未找到')) throw error;
       console.warn(`调用出错（第${attempt + 1}/${retries}次）：${error.message}`);
       if (attempt === retries - 1) throw error;
@@ -229,7 +232,7 @@ async function callLLM(
       await delay(Math.min(baseMs * Math.pow(2, attempt), 120000));
     }
   }
-  throw new Error('LLM调用失败：已耗尽所有重试次数');
+  throw new Error(`LLM调用失败：已耗尽所有重试次数。最后错误：${lastError?.message || '未知错误'}`);
 }
 
 export class GeminiService {
@@ -278,7 +281,7 @@ ${novel.slice(0, 8000)}
 
 请直接输出分析报告，语言专业但易懂，所有内容优先考虑爽感。
 `;
-    return await callLLM(prompt, false, 0.5, MAX_RETRY, 240000);
+    return await callLLM(prompt, false, 0.5, MAX_RETRY, 240000, 4096);
   }
 
   async generateOutline(novel: string, analysisReport: string): Promise<string> {
@@ -289,10 +292,10 @@ ${GOLD_FINGER_FRAMEWORK}
 ${EPISODE_1_STRATEGIES}
 
 原著内容（节选）：
-${novel.slice(0, 4000)}
+${novel.slice(0, 2500)}
 
 分析报告：
-${analysisReport.slice(0, 3000)}
+${analysisReport.slice(0, 2000)}
 
 请输出精简JSON（不要多余解释），用<json></json>包裹：
 {
@@ -344,7 +347,7 @@ ${analysisReport.slice(0, 3000)}
 }
 `;
 
-    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 300000);
+    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 180000, 2048);
     await delay(API_CALL_DELAY);
 
     const outline1Prompt = `
@@ -391,7 +394,7 @@ ${SHUANGDIAN_EXEC_RULES}
 注意：每集key_scenes最多3个，描述尽量简短。第4集暗线启动，第5集必须是绝对最低谷，主角无任何外露翻盘迹象。第2-5集主角出手次数严格为0。相邻集钩子类型必须不同。
 `;
 
-    const outline1 = await callLLM(outline1Prompt, true, 0.3, MAX_RETRY, 300000);
+    const outline1 = await callLLM(outline1Prompt, true, 0.3, MAX_RETRY, 180000, 2048);
     await delay(API_CALL_DELAY);
 
     const outline2Prompt = `
@@ -454,7 +457,7 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
 注意：第7集暗线引爆，第8集必须全面碾压所有嘲讽者，打脸精确回扣原话。第9-10集引入的新威胁必须够强，留足钩子。相邻集钩子类型必须不同。
 `;
 
-    const outline2 = await callLLM(outline2Prompt, true, 0.3, MAX_RETRY, 300000);
+    const outline2 = await callLLM(outline2Prompt, true, 0.3, MAX_RETRY, 180000, 2048);
 
     const allEpisodes = [
       ...(outline1.episodes || []),
@@ -621,7 +624,7 @@ ${ep === 7 ? '6. 暗线引爆！反转回扣第4-5集伏笔，观众爽感拉满
 10. 本集必须至少出现1次主角标志性动作、1次主角口头禅
 `;
 
-      const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, MAX_RETRY, 240000);
+      const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, MAX_RETRY, 180000, 3072);
       allScripts.push(`${'─'.repeat(40)}\n第${ep}集\n${'─'.repeat(40)}\n\n${script}`);
 
       if (ep < endEp) {
