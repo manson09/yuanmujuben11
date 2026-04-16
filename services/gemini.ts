@@ -290,7 +290,7 @@ ${text}
         lastErr = e;
         const msg = String(e?.message || '');
         const isTimeout = msg.includes('504') || msg.includes('超时') || msg.includes('Failed to fetch') || msg.includes('ERR_CONNECTION_CLOSED') || msg.includes('fetch');
-        if (!isTimeout) break;
+        if (!isTimeout) throw e;
       }
     }
     throw lastErr || new Error('分析失败：未知错误');
