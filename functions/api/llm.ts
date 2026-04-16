@@ -5,7 +5,7 @@ interface Env {
   VOLC_BASE_URL?: string;
 }
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+export const onRequestPost = async (context: { request: Request; env: Env }) => {
   const { request, env } = context;
 
   // 读取火山引擎的API Key
