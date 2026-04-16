@@ -3,7 +3,52 @@ interface Env {
   VOLC_API_KEY?: string;
   // ✅ 补1：加上VOLC_BASE_URL的类型定义
   VOLC_BASE_URL?: string;
+  VOLC_MODEL?: string;
 }
+
+function normalizeBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  if (trimmed.endsWith('/chat/completions') || trimmed.endsWith('/completions')) return trimmed;
+  if (trimmed.endsWith('/api/v3')) return `${trimmed}/chat/completions`;
+  return trimmed;
+}
+
+function tryParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function withCors(headers: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...headers,
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+}
+
+export const onRequestGet = async (context: { env: Env }) => {
+  const { env } = context;
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      route: '/api/llm',
+      configured: {
+        hasApiKey: Boolean(env.VOLC_API_KEY),
+        hasBaseUrl: Boolean(env.VOLC_BASE_URL),
+        hasModel: Boolean(env.VOLC_MODEL),
+      },
+    }),
+    { status: 200, headers: withCors({ 'Content-Type': 'application/json' }) }
+  );
+};
+
+export const onRequestOptions = async () => {
+  return new Response(null, { status: 204, headers: withCors() });
+};
 
 export const onRequestPost = async (context: { request: Request; env: Env }) => {
   const { request, env } = context;
@@ -17,7 +62,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       JSON.stringify({
         error: '服务端未配置 API Key/BASE_URL 环境变量，请在 Cloudflare Pages Settings > Environment variables 中添加 VOLC_API_KEY 和 VOLC_BASE_URL'
       }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: withCors({ 'Content-Type': 'application/json' }) }
     );
   }
 
@@ -25,13 +70,14 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     // ✅ 补2：加3行强制替换模型，不用改前端代码，以后换模型只用改这里
     const bodyObj = await request.json();
  
-   bodyObj.model = "doubao-seed-2-0-pro-260215";
+    if (env.VOLC_MODEL) bodyObj.model = env.VOLC_MODEL;
     // 可选：加短剧专属优化插件，不用改前端就能提升爽点密度30%.
 // bodyObj.plugins = ["doubao-short-drama"];
     const body = JSON.stringify(bodyObj);
 
     // 这里你原来的写法是对的，直接用env.VOLC_BASE_URL即可
-    const response = await fetch(baseUrl, {
+    const upstreamUrl = normalizeBaseUrl(baseUrl);
+    const response = await fetch(upstreamUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -40,21 +86,36 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       body: body,
     });
 
-    const data = await response.text();
+    const dataText = await response.text();
+    const upstreamBody = tryParseJson(dataText) ?? dataText;
 
-    return new Response(data, {
-      status: response.status,
-      headers: {
-        'Content-Type': 'application/json',
-        // 可选：加跨域配置，防止本地调试报错
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST'
-      },
-    });
+    if (!response.ok) {
+      return new Response(
+        JSON.stringify({
+          error: '上游请求失败',
+          upstream: {
+            status: response.status,
+            body: upstreamBody,
+          },
+        }),
+        {
+          status: response.status,
+          headers: withCors({ 'Content-Type': 'application/json' }),
+        }
+      );
+    }
+
+    return new Response(
+      typeof upstreamBody === 'string' ? dataText : JSON.stringify(upstreamBody),
+      {
+        status: response.status,
+        headers: withCors({ 'Content-Type': 'application/json' }),
+      }
+    );
   } catch (err: any) {
     return new Response(
       JSON.stringify({ error: `代理请求失败：${err.message}` }),
-      { status: 502, headers: { 'Content-Type': 'application/json' } }
+      { status: 502, headers: withCors({ 'Content-Type': 'application/json' }) }
     );
   }
 }
