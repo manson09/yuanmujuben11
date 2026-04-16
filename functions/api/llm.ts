@@ -26,8 +26,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const bodyObj = await request.json();
  
    bodyObj.model = "ep-20260319024152-c8tmp";
-    // 可选：加短剧专属优化插件，不用改前端就能提升爽点密度30%
-    bodyObj.plugins = ["doubao-short-drama"];
+    // 可选：加短剧专属优化插件，不用改前端就能提升爽点密度30%.
+// bodyObj.plugins = ["doubao-short-drama"];
     const body = JSON.stringify(bodyObj);
 
     // 这里你原来的写法是对的，直接用env.VOLC_BASE_URL即可
