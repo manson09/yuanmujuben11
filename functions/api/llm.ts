@@ -4,6 +4,7 @@ interface Env {
   // ✅ 补1：加上VOLC_BASE_URL的类型定义
   VOLC_BASE_URL?: string;
   VOLC_MODEL?: string;
+  VOLC_TIMEOUT_MS?: string;
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -40,6 +41,14 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+function getUpstreamTimeoutMs(env: Env): number {
+  const raw = (env.VOLC_TIMEOUT_MS || '').trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  const fallback = 60000;
+  const value = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(Math.max(value, 5000), 120000);
+}
+
 export const onRequestGet = async (context: { env: Env }) => {
   const { env } = context;
   return new Response(
@@ -50,6 +59,7 @@ export const onRequestGet = async (context: { env: Env }) => {
         hasApiKey: Boolean(env.VOLC_API_KEY),
         hasBaseUrl: Boolean(env.VOLC_BASE_URL),
         hasModel: Boolean(env.VOLC_MODEL),
+        timeoutMs: getUpstreamTimeoutMs(env),
       },
     }),
     { status: 200, headers: withCors({ 'Content-Type': 'application/json' }) }
@@ -87,6 +97,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
 
     // 这里你原来的写法是对的，直接用env.VOLC_BASE_URL即可
     const upstreamUrl = normalizeBaseUrl(baseUrl);
+    const timeoutMs = getUpstreamTimeoutMs(env);
     const response = await fetchWithTimeout(upstreamUrl, {
       method: 'POST',
       headers: {
@@ -94,7 +105,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
         'Authorization': `Bearer ${apiKey}`
       },
       body: body,
-    }, 25000);
+    }, timeoutMs);
 
     const dataText = await response.text();
     const upstreamBody = tryParseJson(dataText) ?? dataText;
@@ -123,9 +134,10 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       }
     );
   } catch (err: any) {
+    const timeoutMs = getUpstreamTimeoutMs(env);
     const message =
       err?.name === 'AbortError'
-        ? '上游请求超时（25秒）。请降低输出长度/换更快模型，或拆分为多次请求。'
+        ? `上游请求超时（${Math.round(timeoutMs / 1000)}秒）。请降低输出长度/换更快模型，或拆分为多次请求。`
         : err?.message || '未知错误';
     return new Response(
       JSON.stringify({ error: `代理请求失败：${message}` }),
