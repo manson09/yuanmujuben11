@@ -286,10 +286,7 @@ ${novel.slice(0, 8000)}
 
   async generateOutline(novel: string, analysisReport: string): Promise<string> {
     const settingsPrompt = `
-你是爽剧短剧编剧AI。根据原著分析报告，生成短剧基础设定，所有设定服务于爽点最大化。
-
-${GOLD_FINGER_FRAMEWORK}
-${EPISODE_1_STRATEGIES}
+你是爽剧短剧编剧AI。根据原著分析报告生成短剧基础设定，要求：信息密度高、输出极简、只输出JSON。
 
 原著内容（节选）：
 ${novel.slice(0, 2500)}
@@ -347,14 +344,16 @@ ${analysisReport.slice(0, 2000)}
 }
 `;
 
-    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 180000, 2048);
+    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 120000, 1536);
     await delay(API_CALL_DELAY);
 
     const outline1Prompt = `
-你是爽剧短剧编剧AI。根据基础设定生成第1-5集大纲，爽感优先，严格符合爽感曲线。
-
-${PER_EPISODE_ENGINE}
-${SHUANGDIAN_EXEC_RULES}
+你是爽剧短剧编剧AI。根据基础设定生成第1-5集极简大纲（为稳定性，务必精简）。
+硬规则：
+1) 第1集必须“先巅峰炸场→再落魄受辱”，前3个镜头完成观众透底
+2) 第2-5集主角出手次数严格为0，第5集必须绝对最低谷
+3) 每集只给：一句核心冲突 + 最多3个场景短句 + 钩子一句话
+4) 只输出JSON，用<json></json>包裹，标签外不能有任何文字
 
 基础设定：
 - 标题：${this.settings.title}
@@ -378,7 +377,6 @@ ${SHUANGDIAN_EXEC_RULES}
       "title": "集标题（带爽点）",
       "shuang_level": "★★★",
       "protagonist_action_count": 1,
-      "conflict_level": "口头嘲讽",
       "core_conflict": "一句话",
       "key_scenes": ["场景1（必须是主角巅峰炸场场景，含金手指量化展示）", "场景2", "场景3"],
       "info_gap_status": "信息差状态（必须是观众全知，角色全不知）",
@@ -391,16 +389,17 @@ ${SHUANGDIAN_EXEC_RULES}
     }
   ]
 }
-注意：每集key_scenes最多3个，描述尽量简短。第4集暗线启动，第5集必须是绝对最低谷，主角无任何外露翻盘迹象。第2-5集主角出手次数严格为0。相邻集钩子类型必须不同。
 `;
 
-    const outline1 = await callLLM(outline1Prompt, true, 0.3, MAX_RETRY, 180000, 2048);
+    const outline1 = await callLLM(outline1Prompt, true, 0.3, MAX_RETRY, 120000, 1536);
     await delay(API_CALL_DELAY);
 
     const outline2Prompt = `
-你是爽剧短剧编剧AI。根据基础设定和前5集大纲，生成第6-10集大纲、暗线详情和打脸映射，爽感优先，打脸够狠。
-
-${PER_EPISODE_ENGINE}
+你是爽剧短剧编剧AI。根据基础设定和前5集摘要，生成第6-10集极简大纲（为稳定性，务必精简）。
+硬规则：
+1) 第7集暗线引爆，第8集必须全面碾压并精确回扣嘲讽原话
+2) 每集只给：一句核心冲突 + 最多3个场景短句 + 钩子一句话
+3) 只输出JSON，用<json></json>包裹，标签外不能有任何文字
 
 基础设定：
 - 标题：${this.settings.title}
@@ -424,7 +423,6 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
       "title": "集标题（带爽点）",
       "shuang_level": "★★★",
       "protagonist_action_count": 1,
-      "conflict_level": "层级",
       "core_conflict": "一句话",
       "key_scenes": ["场景1", "场景2", "场景3"],
       "info_gap_status": "状态",
@@ -454,10 +452,9 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
     }
   ]
 }
-注意：第7集暗线引爆，第8集必须全面碾压所有嘲讽者，打脸精确回扣原话。第9-10集引入的新威胁必须够强，留足钩子。相邻集钩子类型必须不同。
 `;
 
-    const outline2 = await callLLM(outline2Prompt, true, 0.3, MAX_RETRY, 180000, 2048);
+    const outline2 = await callLLM(outline2Prompt, true, 0.3, MAX_RETRY, 120000, 1536);
 
     const allEpisodes = [
       ...(outline1.episodes || []),
