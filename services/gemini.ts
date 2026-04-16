@@ -1,5 +1,5 @@
 const PROXY_URL = "/api/llm"; 
-const MODEL_NAME = "doubao-seed-pro-250528"; 
+const MODEL_NAME = "ep-20260319024152-c8tmp"; 
 const MAX_RETRY = 5; // ✅ 不用改
 const API_CALL_DELAY = 3000; // ✅ 不用改
 const DELAY_BETWEEN_EPISODES = 5000; 
