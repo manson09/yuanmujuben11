@@ -522,7 +522,8 @@ ${allEpisodes.map((ep: any) => `第${ep.episode}集：${ep.core_conflict}；钩�
     outlineText: string,
     phase: number,
     novel: string,
-    formattingRef?: string
+    formattingRef?: string,
+    onProgress?: (scriptContent: string, currentEp: number) => void
   ): Promise<string> {
     if (!this.settings || !this.outline) {
       throw new Error('请先完成分析和大纲生成');
@@ -541,7 +542,7 @@ ${allEpisodes.map((ep: any) => `第${ep.episode}集：${ep.core_conflict}；钩�
         previousSummary = `上一集结尾：\n...${allScripts[allScripts.length - 1].slice(-200)}`;
       }
 
-           // ✅ 仅修改此处：第一集加专属炸场强制规则
+      // ✅ 仅修改此处：第一集加专属炸场强制规则
       let specialRules = '';
       if (ep === 1) specialRules = `${EPISODE_1_STRATEGIES}\n⚠️ 第一集强制零铺垫炸场：前3个镜头严格匹配选定的开场策略（${this.settings.episode_1_strategy}）和对应类型的量化炸场要求，100字以内完成透底，立刻切落魄/日常/重生场景，绝对禁止先拍废物场景再闪回，字数控制在550-750字。`;
       if (ep <= 5) specialRules += '\n第2-5集严格禁止主角任何形式的出手，最多只能有微表情变化，必须加观众专属OS提示主角是故意隐忍，每集至少3类旁观者反应。';
@@ -603,7 +604,13 @@ ${ep === 8 ? '5. 高潮集！打脸必须干脆，精确回扣原话！' : ''}
 `;
 
       const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, 2, 120000, 2048);
-      allScripts.push(`${'─'.repeat(40)}\n第${ep}集\n${'─'.repeat(40)}\n\n${script}`);
+      const formattedScript = `${'─'.repeat(40)}\n第${ep}集\n${'─'.repeat(40)}\n\n${script}`;
+      allScripts.push(formattedScript);
+      
+      // 触发回调，让前端每生成一集就能渲染出来，同时避免单次长时间卡死
+      if (onProgress) {
+        onProgress(formattedScript, ep);
+      }
 
       if (ep < endEp) {
         await delay(DELAY_BETWEEN_EPISODES);
