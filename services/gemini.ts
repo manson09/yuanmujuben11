@@ -551,10 +551,10 @@ ${allEpisodes.map((ep: any) => `第${ep.episode}集：${ep.core_conflict}；钩�
         }
       }
 
-      const formatRef = formattingRef ? `\n排版参考：\n${formattingRef.slice(0, 800)}\n请模仿以上排版格式。` : '';
+      const formatRef = formattingRef ? `\n排版参考：\n${formattingRef.slice(0, 300)}\n请模仿以上排版格式。` : '';
 
       const prompt = `
-你是爽剧短剧编剧。根据大纲写第${ep}集剧本，爽感优先，打脸够狠，绝对不要拖沓铺垫。
+你是爽剧短剧编剧。根据大纲写第${ep}集剧本，爽感优先，打脸够狠。
 
 ${FORMAT_RULES}
 ${SCRIPT_FORMAT_EXAMPLE}
@@ -568,43 +568,29 @@ ${ANTI_BUG_RULES}
 - 标志性动作：${(this.settings.protagonist.signature_actions || []).join('、')}
 - 口头禅：${this.settings.protagonist.catchphrase}
 - 金手指：${this.settings.gold_finger.quantified_description}（${this.settings.gold_finger.perception}）
-- 女主：${(this.settings.female_lead || {}).name || '无'}（${(this.settings.female_lead || {}).personality || ''}）
-- 主反派：${(this.settings.main_villain || {}).name || '无'}（${(this.settings.main_villain || {}).motivation || ''}）
-- 嘲讽者：${(this.settings.mockers || []).map((m: any) => `${m.name}（"${m.signature_taunt}"，第${m.face_slap_episode}集打脸）`).join('；')}
+- 女主：${(this.settings.female_lead || {}).name || '无'}
+- 嘲讽者：${(this.settings.mockers || []).map((m: any) => `${m.name}（"${m.signature_taunt}"）`).join('；')}
 
 第${ep}集大纲：
-- 引擎：${epOutline.engine}
-- 爽感：${epOutline.shuang_level}
-- 出手次数：${epOutline.protagonist_action_count}
-- 冲突层级：${epOutline.conflict_level || ''}
 - 核心冲突：${epOutline.core_conflict}
 - 场景：${(epOutline.key_scenes || []).join(' → ')}
 - 信息差：${epOutline.info_gap_status || ''}
-- 暗线：${epOutline.dark_line_status || ''}
-- 嘲讽者：${epOutline.mocker_activity || ''}
-- 钩子：${epOutline.hook_type || ''} — ${epOutline.hook_content || ''}
-- 埋伏笔：${(epOutline.foreshadowing_plant || []).join('、') || '无'}
-- 收伏笔：${(epOutline.foreshadowing_payoff || []).join('、') || '无'}
+- 嘲讽者动态：${epOutline.mocker_activity || ''}
+- 钩子：${epOutline.hook_content || ''}
 ${darkLineContext}
 ${faceSlipContext}
 ${previousSummary}
 ${formatRef}
 
 ⚠️ 硬性要求：
-1. 字数500-700字
+1. 字数400-600字
 2. 标准竖屏短剧格式：场景头+△动作+角色名：台词
 3. 台词口语化短句有个性
-4. 主角出手${epOutline.protagonist_action_count}次
-5. 结尾在"${epOutline.hook_content || '最刺激瞬间'}"△黑幕
-${ep === 8 ? '6. 高潮集！所有前7集嘲讽者全部打脸，精确回扣原话，碾压彻底，至少4层旁观者反应！' : ''}
-${ep === 7 ? '6. 暗线引爆！反转回扣第4-5集伏笔，观众爽感拉满！' : ''}
-7. 所有爽点必须有量化展示，比如实力展示配具体数值，财富展示配具体金额
-8. 主角隐忍时必须加1句观众专属OS/特写，明确告诉观众主角是故意忍，不是窝囊
-9. 嘲讽台词必须够狠，直接戳主角痛处，不能软绵绵
-10. 本集必须至少出现1次主角标志性动作、1次主角口头禅
+4. 结尾在"${epOutline.hook_content || '最刺激瞬间'}"△黑幕
+${ep === 8 ? '5. 高潮集！打脸必须干脆，精确回扣原话！' : ''}
 `;
 
-      const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, MAX_RETRY, 180000, 3072);
+      const script = await callLLM(prompt, false, DEFAULT_TEMPERATURE, 2, 120000, 2048);
       allScripts.push(`${'─'.repeat(40)}\n第${ep}集\n${'─'.repeat(40)}\n\n${script}`);
 
       if (ep < endEp) {
