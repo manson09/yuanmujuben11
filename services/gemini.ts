@@ -242,10 +242,10 @@ export class GeminiService {
   async analyzeNovel(novel: string): Promise<string> {
     const variants = [
       {
-        slice: 2000,
+        slice: 2500,
         retries: 2,
-        timeoutMs: 80000,
-        maxTokens: 768,
+        timeoutMs: 120000,
+        maxTokens: 3072,
         prompt: (text: string) => `
 你是专业爽剧短剧编剧AI。请做“快速骨架分析”，输出短、可执行、爽点优先。
 要求：总字数800-1200字；Markdown小标题；不要长篇解释；不要引用原文。
@@ -262,10 +262,10 @@ ${text}
 `,
       },
       {
-        slice: 1200,
+        slice: 1500,
         retries: 1,
-        timeoutMs: 60000,
-        maxTokens: 512,
+        timeoutMs: 90000,
+        maxTokens: 2048,
         prompt: (text: string) => `
 你是专业爽剧短剧编剧AI。输出极简分析提纲（越短越好），只要可直接用于后续生成大纲。
 
@@ -289,7 +289,7 @@ ${text}
       } catch (e: any) {
         lastErr = e;
         const msg = String(e?.message || '');
-        const isTimeout = msg.includes('504') || msg.includes('超时') || msg.includes('Failed to fetch');
+        const isTimeout = msg.includes('504') || msg.includes('超时') || msg.includes('Failed to fetch') || msg.includes('ERR_CONNECTION_CLOSED') || msg.includes('fetch');
         if (!isTimeout) break;
       }
     }
@@ -335,7 +335,7 @@ ${analysisReport.slice(0, 1800)}
 }
 `;
 
-    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 90000, 1024);
+    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 150000, 3072);
     await delay(API_CALL_DELAY);
 
     const genEpisodesBatch = async (startEp: number, endEp: number, previousSummary: string) => {
@@ -383,7 +383,7 @@ ${previousSummary}
 }
 `;
 
-      const result = await callLLM(prompt, true, 0.3, MAX_RETRY, 90000, 1024);
+      const result = await callLLM(prompt, true, 0.3, MAX_RETRY, 150000, 3072);
       return (result?.episodes || []) as any[];
     };
 
@@ -442,7 +442,7 @@ ${allEpisodes.map((ep: any) => `第${ep.episode}集：${ep.core_conflict}；钩�
 }
 `;
 
-    const meta = await callLLM(metaPrompt, true, 0.3, MAX_RETRY, 90000, 1024);
+    const meta = await callLLM(metaPrompt, true, 0.3, MAX_RETRY, 120000, 2048);
 
     this.outline = {
       outline: allEpisodes,
