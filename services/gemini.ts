@@ -240,31 +240,37 @@ export class GeminiService {
   private outline: any = null;
 
   async analyzeNovel(novel: string): Promise<string> {
-    const prompt = `
-你是专业爽剧短剧编剧AI。请对原著做“快速骨架分析”，输出要短、可执行、爽点优先。
-要求：
-1) 总字数控制在800-1200字
-2) 用Markdown小标题输出（## 一、二、三...），每段2-5条要点
-3) 不要长篇解释，不要引用原文
+    const variants = [
+      {
+        slice: 2000,
+        retries: 2,
+        timeoutMs: 80000,
+        maxTokens: 768,
+        prompt: (text: string) => `
+你是专业爽剧短剧编剧AI。请做“快速骨架分析”，输出短、可执行、爽点优先。
+要求：总字数800-1200字；Markdown小标题；不要长篇解释；不要引用原文。
 
 原著内容（节选）：
-${novel.slice(0, 3500)}
+${text}
 
-请输出：
-## 一、人物与关系
-## 二、核心冲突与爽点
+输出：
+## 一、人物与关系（要点）
+## 二、核心冲突与爽点（要点）
 ## 三、金手指建议（含量化数字）
-## 四、第1集开场策略（三镜头内透底）
-## 五、10集总体走向（每集一句话）
-`;
+## 四、第1集三镜头开场（先巅峰炸场→再落魄受辱）
+## 五、10集走向（每集一句话）
+`,
+      },
+      {
+        slice: 1200,
+        retries: 1,
+        timeoutMs: 60000,
+        maxTokens: 512,
+        prompt: (text: string) => `
+你是专业爽剧短剧编剧AI。输出极简分析提纲（越短越好），只要可直接用于后续生成大纲。
 
-    try {
-      return await callLLM(prompt, false, 0.5, MAX_RETRY, 90000, 1536);
-    } catch (e: any) {
-      const fallback = `
-你是专业爽剧短剧编剧AI。请输出极简分析提纲（越短越好），只要可直接用于后续生成大纲。
 原著内容（节选）：
-${novel.slice(0, 2500)}
+${text}
 
 输出格式（纯文本）：
 1) 主角一句话底牌（含量化数字）
@@ -272,9 +278,22 @@ ${novel.slice(0, 2500)}
 3) 核心爽梗一句话
 4) 第1集三镜头开场（每镜头一句话）
 5) 10集走向（每集一句话）
-`;
-      return await callLLM(fallback, false, 0.5, 1, 45000, 1024);
+`,
+      },
+    ] as const;
+
+    let lastErr: any = null;
+    for (const v of variants) {
+      try {
+        return await callLLM(v.prompt(novel.slice(0, v.slice)), false, 0.5, v.retries, v.timeoutMs, v.maxTokens);
+      } catch (e: any) {
+        lastErr = e;
+        const msg = String(e?.message || '');
+        const isTimeout = msg.includes('504') || msg.includes('超时') || msg.includes('Failed to fetch');
+        if (!isTimeout) break;
+      }
     }
+    throw lastErr || new Error('分析失败：未知错误');
   }
 
   async generateOutline(novel: string, analysisReport: string): Promise<string> {
