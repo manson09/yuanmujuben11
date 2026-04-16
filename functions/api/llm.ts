@@ -25,7 +25,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // ✅ 补2：加3行强制替换模型，不用改前端代码，以后换模型只用改这里
     const bodyObj = await request.json();
  
-   bodyObj.model = "ep-20260319024152-c8tmp";
+   bodyObj.model = "doubao-seed-2-0-pro-260215";
     // 可选：加短剧专属优化插件，不用改前端就能提升爽点密度30%.
 // bodyObj.plugins = ["doubao-short-drama"];
     const body = JSON.stringify(bodyObj);
