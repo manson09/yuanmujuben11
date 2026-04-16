@@ -68,20 +68,32 @@ const App: React.FC = () => {
   const runScripts = async () => {
     setLoading(true);
     setStatusText(`正在精修创作第 ${project.currentPhase * 10 - 9}-${project.currentPhase * 10} 集脚本...`);
+    // 清空当前阶段的老脚本
+    setProject(prev => ({ ...prev, scripts: [] }));
+    setStage(AppStage.SCRIPT);
+
     try {
-      const scriptsText = await gemini.current.generateScripts(
+      await gemini.current.generateScripts(
         project.outline!, 
         project.currentPhase, 
         project.originalNovel,
-        project.formattingRef
+        project.formattingRef,
+        (scriptContent, ep) => {
+          // 每生成一集，立刻拼接到屏幕上，并更新进度
+          setProject(prev => ({ 
+            ...prev, 
+            scripts: [...prev.scripts, scriptContent] 
+          }));
+          setStatusText(`第 ${ep} 集生成完毕，正在准备下一集...`);
+        }
       );
-      setProject(prev => ({ ...prev, scripts: [scriptsText] }));
-      setStage(AppStage.SCRIPT);
     } catch (error) {
       console.error(error);
-      alert('脚本生成失败');
+      const message = error instanceof Error ? error.message : '未知错误';
+      alert(`脚本生成失败：${message}`);
     } finally {
       setLoading(false);
+      setStatusText('');
     }
   };
 
