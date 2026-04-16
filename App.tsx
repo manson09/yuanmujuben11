@@ -58,7 +58,8 @@ const App: React.FC = () => {
       setStage(AppStage.OUTLINE);
     } catch (error) {
       console.error(error);
-      alert('大纲生成失败');
+      const message = error instanceof Error ? error.message : '未知错误';
+      alert(`大纲生成失败：${message}`);
     } finally {
       setLoading(false);
     }
