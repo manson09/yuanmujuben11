@@ -286,191 +286,162 @@ ${novel.slice(0, 8000)}
 
   async generateOutline(novel: string, analysisReport: string): Promise<string> {
     const settingsPrompt = `
-你是爽剧短剧编剧AI。根据原著分析报告生成短剧基础设定，要求：信息密度高、输出极简、只输出JSON。
+你是爽剧短剧编剧AI。根据“原著内容节选”和“分析报告节选”生成短剧基础设定。
+要求：信息密度高、极简输出、只输出JSON，用<json></json>包裹，标签外不能有任何文字。
 
 原著内容（节选）：
-${novel.slice(0, 2500)}
+${novel.slice(0, 2000)}
 
-分析报告：
-${analysisReport.slice(0, 2000)}
+分析报告（节选）：
+${analysisReport.slice(0, 1800)}
 
-请输出精简JSON（不要多余解释），用<json></json>包裹：
+输出JSON结构：
 {
-  "title": "短剧标题（必须带爽点，比如《战神赘婿：丈母娘悔哭了》）",
+  "title": "短剧标题（带爽点）",
   "genre": "子流派",
-  "core_shuangdian": "核心爽梗（必须可在第一集开场展示）",
-  "auxiliary_shuangdian": ["辅助1", "辅助2"],
+  "core_shuangdian": "核心爽梗（一句话）",
   "shuangdian_type": "爽梗大类",
   "gold_finger": {
-    "type": "金手指类型",
+    "type": "类型",
     "perception": "感知维度",
-    "form": "存在形式",
-    "action": "作用方式",
-    "quantified_description": "量化描述（必须具体到数字，能直接放在第一集开场）",
-    "reveal_method": "透底形式（必须前3个镜头完成）",
-    "hide_reason": "隐忍理由（必须合理，观众能接受）"
+    "quantified_description": "量化描述（带数字）",
+    "reveal_method": "透底形式（前三镜头完成）",
+    "hide_reason": "隐忍理由"
   },
   "episode_1_strategy": "A或B或C或D",
   "protagonist": {
     "name": "姓名",
-    "surface_identity": "表面身份（必须够惨，反差够大）",
-    "true_identity": "真实底牌（必须够强，反差够大）",
-    "personality_tags": ["性格1", "性格2"],
-    "signature_actions": ["动作1（必须有辨识度，比如摸戒指/插兜）"],
-    "catchphrase": "口头禅（必须够爽，比如「我的人你也敢动？」）",
-    "bottom_line": "底线（必须明确，触碰就爆发）"
+    "surface_identity": "表面身份（够惨）",
+    "true_identity": "真实底牌（够强）",
+    "catchphrase": "口头禅",
+    "signature_actions": ["动作1"]
   },
-  "female_lead": {
-    "name": "姓名",
-    "relationship": "与主角关系",
-    "personality": "性格"
-  },
-  "main_villain": {
-    "name": "姓名",
-    "motivation": "动机（必须够坏，拉满仇恨）",
-    "escalation_path": "手段升级路径"
-  },
-  "mockers": [
-    {
-      "name": "姓名",
-      "identity": "身份",
-      "signature_taunt": "标志性嘲讽台词（必须戳主角痛处）",
-      "face_slap_episode": 7,
-      "face_slap_method": "打脸方式（必须够狠）"
-    }
-  ],
-  "ultimate_hook": "终极钩子（必须具体）",
-  "setting_summary": "一句话概括（带爽点）"
+  "female_lead": { "name": "姓名", "relationship": "关系", "personality": "性格" },
+  "main_villain": { "name": "姓名", "motivation": "动机" },
+  "mockers": [{ "name": "姓名", "signature_taunt": "嘲讽原话", "face_slap_episode": 7 }],
+  "ultimate_hook": "终极钩子"
 }
 `;
 
-    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 120000, 1536);
+    this.settings = await callLLM(settingsPrompt, true, 0.3, MAX_RETRY, 90000, 1024);
     await delay(API_CALL_DELAY);
 
-    const outline1Prompt = `
-你是爽剧短剧编剧AI。根据基础设定生成第1-5集极简大纲（为稳定性，务必精简）。
+    const genEpisodesBatch = async (startEp: number, endEp: number, previousSummary: string) => {
+      const prompt = `
+你是爽剧短剧编剧AI。生成第${startEp}-${endEp}集大纲（极简版，优先稳定返回）。
 硬规则：
 1) 第1集必须“先巅峰炸场→再落魄受辱”，前3个镜头完成观众透底
 2) 第2-5集主角出手次数严格为0，第5集必须绝对最低谷
-3) 每集只给：一句核心冲突 + 最多3个场景短句 + 钩子一句话
-4) 只输出JSON，用<json></json>包裹，标签外不能有任何文字
+3) 第7集暗线引爆，第8集全面碾压并精确回扣嘲讽原话
+4) 每集字段必须齐全，字符串尽量短，key_scenes最多3条
+5) 只输出JSON，用<json></json>包裹，标签外不能有任何文字
 
 基础设定：
 - 标题：${this.settings.title}
 - 核心爽梗：${this.settings.core_shuangdian}
 - 金手指：${this.settings.gold_finger.quantified_description}（${this.settings.gold_finger.perception}）
 - 主角：${this.settings.protagonist.name}（表面${this.settings.protagonist.surface_identity}，真实${this.settings.protagonist.true_identity}）
-- 女主：${(this.settings.female_lead || {}).name || '无'}
-- 主反派：${(this.settings.main_villain || {}).name || '无'}（${(this.settings.main_villain || {}).motivation || ''}）
-- 嘲讽者：${(this.settings.mockers || []).map((m: any) => m.name + '："' + m.signature_taunt + '"').join('；')}
-- 开场策略：${this.settings.episode_1_strategy}
+- 嘲讽者原话：${(this.settings.mockers || []).map((m: any) => `"${m.signature_taunt}"`).join('；')}
 - 终极钩子：${this.settings.ultimate_hook}
 
-爽感曲线前5集：第1集★★★→第2集★★→第3集★★→第4集★→第5集☆
+已生成摘要（如有）：
+${previousSummary}
 
-输出精简JSON，用<json></json>包裹：
+输出JSON结构：
 {
   "episodes": [
     {
-      "episode": 1,
-      "engine": "信息差炸弹",
+      "episode": ${startEp},
+      "engine": "引擎短句",
       "title": "集标题（带爽点）",
-      "shuang_level": "★★★",
-      "protagonist_action_count": 1,
+      "shuang_level": "★到★★★★★",
+      "protagonist_action_count": 0,
+      "conflict_level": "冲突层级短句",
       "core_conflict": "一句话",
-      "key_scenes": ["场景1（必须是主角巅峰炸场场景，含金手指量化展示）", "场景2", "场景3"],
-      "info_gap_status": "信息差状态（必须是观众全知，角色全不知）",
-      "dark_line_status": "无",
-      "mocker_activity": "嘲讽者动态（必须够狠，拉仇恨）",
-      "hook_type": "反差钩子",
-      "hook_content": "钩子内容",
-      "foreshadowing_plant": ["伏笔1"],
-      "foreshadowing_payoff": []
+      "key_scenes": ["短句1", "短句2", "短句3"],
+      "info_gap_status": "一句话",
+      "dark_line_status": "一句话",
+      "mocker_activity": "一句话",
+      "hook_type": "反差钩子/悬念钩子/情感钩子/危机钩子",
+      "hook_content": "一句话",
+      "foreshadowing_plant": ["短句1"],
+      "foreshadowing_payoff": ["短句1"]
     }
   ]
 }
 `;
 
-    const outline1 = await callLLM(outline1Prompt, true, 0.3, MAX_RETRY, 120000, 1536);
-    await delay(API_CALL_DELAY);
+      const result = await callLLM(prompt, true, 0.3, MAX_RETRY, 90000, 1024);
+      return (result?.episodes || []) as any[];
+    };
 
-    const outline2Prompt = `
-你是爽剧短剧编剧AI。根据基础设定和前5集摘要，生成第6-10集极简大纲（为稳定性，务必精简）。
-硬规则：
-1) 第7集暗线引爆，第8集必须全面碾压并精确回扣嘲讽原话
-2) 每集只给：一句核心冲突 + 最多3个场景短句 + 钩子一句话
-3) 只输出JSON，用<json></json>包裹，标签外不能有任何文字
+    const batches: Array<[number, number]> = [
+      [1, 2],
+      [3, 4],
+      [5, 6],
+      [7, 8],
+      [9, 10],
+    ];
 
-基础设定：
-- 标题：${this.settings.title}
-- 核心爽梗：${this.settings.core_shuangdian}
-- 金手指：${this.settings.gold_finger.quantified_description}
-- 主角：${this.settings.protagonist.name}
-- 嘲讽者：${(this.settings.mockers || []).map((m: any) => m.name + '："' + m.signature_taunt + '"，第' + m.face_slap_episode + '集打脸').join('；')}
-- 终极钩子：${this.settings.ultimate_hook}
-
-前5集大纲摘要：
-${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]${ep.shuang_level}：${ep.core_conflict}，钩子：${ep.hook_content}`).join('\n')}
-
-爽感曲线后5集：第6集★★★→第7集★★★★→第8集★★★★★→第9集★★→第10集★★★
-
-输出精简JSON，用<json></json>包裹：
-{
-  "episodes": [
-    {
-      "episode": 6,
-      "engine": "释放一口气",
-      "title": "集标题（带爽点）",
-      "shuang_level": "★★★",
-      "protagonist_action_count": 1,
-      "core_conflict": "一句话",
-      "key_scenes": ["场景1", "场景2", "场景3"],
-      "info_gap_status": "状态",
-      "dark_line_status": "状态",
-      "mocker_activity": "动态",
-      "hook_type": "钩子类型",
-      "hook_content": "内容",
-      "foreshadowing_plant": [],
-      "foreshadowing_payoff": ["回收1"]
+    const allEpisodes: any[] = [];
+    for (const [s, e] of batches) {
+      const summary = allEpisodes
+        .slice(-4)
+        .map((ep: any) => `第${ep.episode}集[${ep.engine}]${ep.shuang_level}：${ep.core_conflict}（钩子：${ep.hook_content}）`)
+        .join('\n');
+      const eps = await genEpisodesBatch(s, e, summary);
+      for (const ep of eps) {
+        if (typeof ep?.episode !== 'number') continue;
+        allEpisodes.push(ep);
+      }
+      await delay(API_CALL_DELAY);
     }
-  ],
+
+    const metaPrompt = `
+你是爽剧短剧编剧AI。根据设定与10集大纲，输出暗线详情与打脸映射（极简版）。
+要求：只输出JSON，用<json></json>包裹，标签外不能有任何文字。
+
+设定：
+- 主角：${this.settings.protagonist.name}
+- 嘲讽者：${(this.settings.mockers || []).map((m: any) => `${m.name}："${m.signature_taunt}"（第${m.face_slap_episode}集打脸）`).join('；')}
+
+10集摘要：
+${allEpisodes.map((ep: any) => `第${ep.episode}集：${ep.core_conflict}；钩子：${ep.hook_content}`).join('\n').slice(0, 1200)}
+
+输出JSON结构：
+{
   "dark_line_detail": {
-    "ep4_action": "第4集暗线动作（必须给观众上帝视角提示）",
-    "ep5_progress": "第5集微进展（必须给观众上帝视角提示）",
-    "ep6_partial_use": "第6集部分使用",
-    "ep7_full_reveal": "第7集全面引爆",
-    "audience_realization": "观众恍然大悟的内容（必须够爽）"
+    "ep4_action": "一句话",
+    "ep5_progress": "一句话",
+    "ep6_partial_use": "一句话",
+    "ep7_full_reveal": "一句话",
+    "audience_realization": "一句话"
   },
   "face_slap_map": [
     {
       "mocker_name": "姓名",
       "taunt_episode": 2,
-      "taunt_line": "嘲讽原话（必须戳痛处）",
+      "taunt_line": "嘲讽原话",
       "slap_episode": 7,
-      "slap_method": "打脸方式（必须够狠）",
-      "callback_line": "回扣台词（必须精确对应嘲讽原话）"
+      "slap_method": "一句话",
+      "callback_line": "精确回扣嘲讽原话"
     }
   ]
 }
 `;
 
-    const outline2 = await callLLM(outline2Prompt, true, 0.3, MAX_RETRY, 120000, 1536);
-
-    const allEpisodes = [
-      ...(outline1.episodes || []),
-      ...(outline2.episodes || [])
-    ];
+    const meta = await callLLM(metaPrompt, true, 0.3, MAX_RETRY, 90000, 1024);
 
     this.outline = {
       outline: allEpisodes,
-      dark_line_detail: outline2.dark_line_detail || {
+      dark_line_detail: meta?.dark_line_detail || {
         ep4_action: "待定",
         ep5_progress: "待定",
         ep6_partial_use: "待定",
         ep7_full_reveal: "待定",
         audience_realization: "待定"
       },
-      face_slap_map: outline2.face_slap_map || []
+      face_slap_map: meta?.face_slap_map || []
     };
 
     let output = `# 📋 《${this.settings.title}》基础设定\n\n`;
@@ -491,7 +462,7 @@ ${(outline1.episodes || []).map((ep: any) => `第${ep.episode}集[${ep.engine}]$
     });
 
     output += `\n# 📺 10集大纲\n\n`;
-    allEpisodes.forEach((ep: any) => {
+    (this.outline.outline || []).forEach((ep: any) => {
       output += `## 第${ep.episode}集 ${ep.title || ''}  [${ep.engine}] ${ep.shuang_level}\n`;
       output += `冲突层级：${ep.conflict_level || ''} | 出手次数：${ep.protagonist_action_count}\n`;
       output += `核心冲突：${ep.core_conflict}\n`;
